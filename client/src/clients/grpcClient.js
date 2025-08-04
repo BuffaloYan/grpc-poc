@@ -168,7 +168,6 @@ class GrpcClient {
 
     logger.info(`Starting gRPC performance test: ${numRequests} requests, concurrency: ${concurrency}, streaming: ${useStreaming}`);
 
-    const requests = this.generateTestRequests(numRequests, requestSize, responseSize);
     const startTime = Date.now();
     const results = [];
 
@@ -178,7 +177,8 @@ class GrpcClient {
       const batches = [];
       
       for (let i = 0; i < numRequests; i += batchSize) {
-        batches.push(requests.slice(i, i + batchSize));
+        const batchRequests = this.generateTestRequests(batchSize, requestSize, responseSize);
+        batches.push(batchRequests);
       }
 
       const promises = batches.map(batch => this.processDataStream(batch));
@@ -188,18 +188,20 @@ class GrpcClient {
         results.push(...batchResult.responses);
       });
     } else {
-      // Use concurrent individual requests
+      // Use concurrent individual requests with controlled concurrency
       const promises = [];
       for (let i = 0; i < numRequests; i += concurrency) {
-        const batch = requests.slice(i, i + concurrency);
-        const batchPromises = batch.map(request => this.processData(request));
+        const batchSize = Math.min(concurrency, numRequests - i);
+        const batchRequests = this.generateTestRequests(batchSize, requestSize, responseSize);
+        const batchPromises = batchRequests.map(request => this.processData(request));
         promises.push(Promise.all(batchPromises));
       }
 
-      const batchResults = await Promise.all(promises);
-      batchResults.forEach(batch => {
-        results.push(...batch);
-      });
+      // Process batches sequentially to avoid overwhelming gRPC connection
+      for (const batchPromise of promises) {
+        const batchResults = await batchPromise;
+        results.push(...batchResults);
+      }
     }
 
     const endTime = Date.now();
@@ -218,9 +220,9 @@ class GrpcClient {
 
   generateTestRequests(count, requestSize, responseSize) {
     const requests = [];
-    const payload = Buffer.alloc(requestSize);
     
-    // Fill with pattern data
+    // Create a single reusable payload buffer to save memory
+    const payload = Buffer.alloc(requestSize);
     for (let i = 0; i < requestSize; i++) {
       payload[i] = i % 256;
     }
@@ -229,7 +231,7 @@ class GrpcClient {
       requests.push({
         id: `grpc-request-${i}`,
         timestamp: Date.now(),
-        payload: payload, // Use Buffer directly, let gRPC handle conversion
+        payload: payload, // Reuse the same buffer for all requests
         metadata: {
           requestIndex: i.toString(),
           expectedResponseSize: responseSize.toString(),

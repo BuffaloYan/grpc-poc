@@ -5,6 +5,25 @@ const logger = require('../utils/logger');
 class HttpClient {
   constructor() {
     this.baseURL = `${config.http.protocol}://${config.http.host}:${config.http.port}/api/v1/performance`;
+    // Create HTTP agent with connection pooling
+    const httpAgent = new (require('http').Agent)({
+      keepAlive: true,
+      keepAliveMsecs: 30000,
+      maxSockets: 50, // Limit concurrent connections
+      maxFreeSockets: 10,
+      timeout: 60000
+    });
+
+    // Create HTTPS agent with connection pooling
+    const httpsAgent = config.http.protocol === 'https' ? new (require('https').Agent)({
+      keepAlive: true,
+      keepAliveMsecs: 30000,
+      maxSockets: 50, // Limit concurrent connections
+      maxFreeSockets: 10,
+      timeout: 60000,
+      rejectUnauthorized: false // Allow self-signed certificates
+    }) : undefined;
+
     this.client = axios.create({
       baseURL: this.baseURL,
       timeout: 120000, // 2 minutes timeout for large payloads
@@ -12,10 +31,8 @@ class HttpClient {
         'Content-Type': 'application/json',
         'Accept': 'application/json'
       },
-      // Add HTTPS configuration for self-signed certificates
-      httpsAgent: config.http.protocol === 'https' ? new (require('https').Agent)({
-        rejectUnauthorized: false // Allow self-signed certificates
-      }) : undefined
+      httpAgent: httpAgent,
+      httpsAgent: httpsAgent
     });
 
     // Add request/response interceptors for logging and metrics
@@ -69,80 +86,41 @@ class HttpClient {
     }
   }
 
-  async processBatch(requests, responseSize = 0) {
-    try {
-      // Calculate timeout based on total payload size
-      const totalPayloadSize = requests.reduce((total, req) => {
-        return total + (req.payload ? Buffer.from(req.payload, 'base64').length : 0);
-      }, 0);
-      const timeout = Math.max(300000, totalPayloadSize * 0.01); // At least 5 minutes, or 10ms per byte
-      
-      // Use base64 endpoint for batch processing since we're sending base64-encoded payloads
-      const response = await this.client.post('/process-batch-base64', requests, {
-        params: responseSize > 0 ? { responseSize } : {},
-        timeout: timeout
-      });
-      return response.data;
-    } catch (error) {
-      logger.error('HTTP processBatch error:', error.response?.data || error.message);
-      throw error;
-    }
-  }
+
 
   async performanceTest(testConfig) {
     const {
       numRequests = 100,
       concurrency = 10,
       requestSize = config.performance.defaultRequestSize,
-      responseSize = config.performance.defaultResponseSize,
-      useBatch = false
+      responseSize = config.performance.defaultResponseSize
     } = testConfig;
 
-    logger.info(`Starting HTTP performance test: ${numRequests} requests, concurrency: ${concurrency}, batch: ${useBatch}`);
+    logger.info(`Starting HTTP performance test: ${numRequests} requests, concurrency: ${concurrency}`);
 
-    const requests = this.generateTestRequests(numRequests, requestSize, responseSize);
     const startTime = Date.now();
     const results = [];
 
-    if (useBatch) {
-      // Use batch processing for better throughput
-      const batchSize = Math.min(concurrency, 50); // Limit batch size to avoid large payloads
-      const batches = [];
-      
-      for (let i = 0; i < numRequests; i += batchSize) {
-        batches.push(requests.slice(i, i + batchSize));
-      }
+    // Use concurrent individual requests with controlled concurrency
+    const promises = [];
+    for (let i = 0; i < numRequests; i += concurrency) {
+      const batchSize = Math.min(concurrency, numRequests - i);
+      const batchRequests = this.generateTestRequests(batchSize, requestSize, responseSize);
+      const batchPromises = batchRequests.map(request => this.processData(request, responseSize));
+      promises.push(Promise.all(batchPromises));
+    }
 
-      const promises = batches.map(batch => this.processBatch(batch, responseSize));
-      const batchResults = await Promise.all(promises);
-      
-      batchResults.forEach(batchResult => {
-        if (Array.isArray(batchResult)) {
-          results.push(...batchResult);
-        } else {
-          results.push(batchResult);
-        }
-      });
-    } else {
-      // Use concurrent individual requests
-      const promises = [];
-      for (let i = 0; i < numRequests; i += concurrency) {
-        const batch = requests.slice(i, i + concurrency);
-        const batchPromises = batch.map(request => this.processData(request, responseSize));
-        promises.push(Promise.all(batchPromises));
-      }
-
-      const batchResults = await Promise.all(promises);
-      batchResults.forEach(batch => {
-        results.push(...batch);
-      });
+    // Process batches sequentially to avoid overwhelming connection pool
+    for (const batchPromise of promises) {
+      const batchResults = await batchPromise;
+      results.push(...batchResults);
     }
 
     const endTime = Date.now();
     const totalDuration = endTime - startTime;
 
     return {
-      protocol: useBatch ? 'http-batch' : 'http',
+      protocol: 'http',
       totalRequests: numRequests,
       successfulRequests: results.length,
       totalDuration,

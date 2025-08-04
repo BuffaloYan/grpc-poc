@@ -23,7 +23,10 @@ public class GrpcConfig {
                     .keepAliveTime(60, java.util.concurrent.TimeUnit.SECONDS)
                     .keepAliveTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
                     .permitKeepAliveWithoutCalls(true)
-                    .permitKeepAliveTime(30, java.util.concurrent.TimeUnit.SECONDS);
+                    .permitKeepAliveTime(30, java.util.concurrent.TimeUnit.SECONDS)
+                    .maxConnectionIdle(300, java.util.concurrent.TimeUnit.SECONDS)
+                    .maxConnectionAge(600, java.util.concurrent.TimeUnit.SECONDS)
+                    .maxConnectionAgeGrace(60, java.util.concurrent.TimeUnit.SECONDS);
             }
         };
     }

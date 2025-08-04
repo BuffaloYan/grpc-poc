@@ -21,9 +21,9 @@ export const TestConfiguration: React.FC<TestConfigurationProps> = ({ onRunTest,
   const [responseSizeInput, setResponseSizeInput] = useState('10MB');
   const [presets] = useState([
     { name: 'Quick Test', numRequests: 10, concurrency: 2, requestSize: '1KB', responseSize: '10KB' },
-    { name: 'Light Load', numRequests: 100, concurrency: 10, requestSize: '100KB', responseSize: '1MB' },
-    { name: 'Medium Load', numRequests: 500, concurrency: 25, requestSize: '1MB', responseSize: '10MB' },
-    { name: 'Heavy Load', numRequests: 1000, concurrency: 50, requestSize: '5MB', responseSize: '50MB' },
+    { name: 'Light Load', numRequests: 40, concurrency: 5, requestSize: '100KB', responseSize: '1MB' },
+    { name: 'Medium Load', numRequests: 40, concurrency: 8, requestSize: '1MB', responseSize: '10MB' },
+    { name: 'Heavy Load', numRequests: 60, concurrency: 10, requestSize: '2MB', responseSize: '20MB' },
   ]);
 
   useEffect(() => {

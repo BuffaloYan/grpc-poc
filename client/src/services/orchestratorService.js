@@ -104,24 +104,16 @@ class OrchestratorService {
           })
         );
 
-        promises.push(
-          this.httpClient.performanceTest({
-            numRequests,
-            concurrency,
-            requestSize,
-            responseSize,
-            useBatch: true
-          }).then(result => ({ protocol: 'http-batch', ...result }))
-          .catch(error => {
-            logger.warn('HTTP batch performance test failed:', error.message);
-            return { protocol: 'http-batch', error: error.message, totalRequests: 0, successfulRequests: 0, failedRequests: numRequests };
-          })
-        );
+
       }
 
 
 
-      const results = await Promise.all(promises);
+      const results = [];
+      for (const promise of promises) {
+        const result = await promise;
+        results.push(result);
+      }
 
       // Process and store results
       results.forEach(result => {
