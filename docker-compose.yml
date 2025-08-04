@@ -1,0 +1,137 @@
+services:
+  # Java Spring Boot gRPC/HTTP Server
+  server:
+    build:
+      context: .
+      dockerfile: ./server/Dockerfile
+    container_name: grpc-demo-server
+    hostname: grpc-server
+    ports:
+      - "8080:8080"  # HTTP port
+      - "9090:9090"  # gRPC port
+    volumes:
+      - ./certs:/app/certs:ro
+    environment:
+      - JAVA_OPTS=-Xmx4g -Xms2g -XX:+UseG1GC -XX:MaxGCPauseMillis=200
+    healthcheck:
+      test: ["CMD", "curl", "-k", "-f", "http://localhost:8080/api/v1/performance/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - grpc-demo-network
+    restart: unless-stopped
+
+  # Node.js gRPC/HTTP Client API
+  client:
+    build:
+      context: .
+      dockerfile: ./client/Dockerfile
+    container_name: grpc-demo-client
+    hostname: grpc-client
+    ports:
+      - "3000:3000"  # Client API port
+    volumes:
+      - ./certs:/app/certs:ro
+    environment:
+      - NODE_ENV=production
+      - GRPC_SERVER_HOST=grpc-server
+      - GRPC_SERVER_PORT=9090
+      - HTTP_SERVER_HOST=grpc-server
+      - HTTP_SERVER_PORT=8080
+      - CLIENT_PORT=3000
+      - LOG_LEVEL=info
+    depends_on:
+      server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - grpc-demo-network
+    restart: unless-stopped
+
+  # React UI
+  ui:
+    build:
+      context: .
+      dockerfile: ./ui/Dockerfile
+    container_name: grpc-demo-ui
+    hostname: grpc-ui
+    ports:
+      - "8082:80"   # Web UI port
+    environment:
+      - VITE_API_URL=http://localhost:3000
+    depends_on:
+      client:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - grpc-demo-network
+    restart: unless-stopped
+
+  # Optional: Monitoring with Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: grpc-demo-prometheus
+    hostname: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - grpc-demo-network
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  # Optional: Monitoring with Grafana
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grpc-demo-grafana
+    hostname: grafana
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./docker/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./docker/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    depends_on:
+      - prometheus
+    networks:
+      - grpc-demo-network
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+networks:
+  grpc-demo-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16
+
+volumes:
+  prometheus_data:
+  grafana_data:

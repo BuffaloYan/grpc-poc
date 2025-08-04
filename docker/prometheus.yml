@@ -1,0 +1,33 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Java Spring Boot Server
+  - job_name: 'grpc-server'
+    static_configs:
+      - targets: ['grpc-server:8080']
+    metrics_path: '/actuator/prometheus'
+    scrape_interval: 10s
+
+  # Node.js Client API
+  - job_name: 'grpc-client'
+    static_configs:
+      - targets: ['grpc-client:3000']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  # Optional: System metrics
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    scrape_interval: 15s

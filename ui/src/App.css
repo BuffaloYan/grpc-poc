@@ -1,0 +1,110 @@
+/* App.css - Additional styles for the gRPC Performance Tester */
+
+/* Custom scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* Animation utilities */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* Loading spinner */
+.spinner {
+  @apply inline-block w-4 h-4 border-2 border-gray-300 border-t-primary-600 rounded-full animate-spin;
+}
+
+/* Chart container styling */
+.recharts-wrapper {
+  font-family: inherit !important;
+}
+
+.recharts-default-tooltip {
+  @apply bg-white border border-gray-200 rounded-lg shadow-lg !important;
+}
+
+.recharts-tooltip-label {
+  @apply text-gray-900 font-medium !important;
+}
+
+.recharts-tooltip-item {
+  @apply text-gray-700 !important;
+}
+
+/* Custom focus styles */
+.focus-visible {
+  @apply outline-none ring-2 ring-primary-500 ring-offset-2;
+}
+
+/* Table hover effects */
+.table-row-hover:hover {
+  @apply bg-gray-50 transition-colors duration-150;
+}
+
+/* Status indicator pulse animation */
+.status-pulse {
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 768px) {
+  .container {
+    @apply px-2;
+  }
+  
+  .card {
+    @apply p-4;
+  }
+  
+  .grid-responsive {
+    @apply grid-cols-1;
+  }
+}
+
+/* Print styles */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  
+  .card {
+    @apply shadow-none border border-gray-300;
+  }
+}
+

@@ -1,0 +1,56 @@
+# Development override for docker-compose.yml
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  server:
+    volumes:
+      - ./server/src:/app/src:ro
+      - ./server/target:/app/target
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - JAVA_OPTS=-Xmx1g -Xms512m -XX:+UseG1GC -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+      - "5005:5005"  # Java debug port
+
+  client:
+    volumes:
+      - ./client/src:/app/src:ro
+      - ./client/logs:/app/logs
+    environment:
+      - NODE_ENV=development
+      - LOG_LEVEL=debug
+    ports:
+      - "3000:3000"
+      - "9229:9229"  # Node.js debug port
+
+  ui:
+    volumes:
+      - ./ui/src:/app/src:ro
+      - ./ui/public:/app/public:ro
+    environment:
+      - VITE_API_URL=http://localhost:3000
+      - NODE_ENV=development
+    ports:
+      - "5173:80"  # Vite dev server port
+
+  # Development database for storing test results (optional)
+  postgres:
+    image: postgres:15-alpine
+    container_name: grpc-demo-postgres
+    environment:
+      - POSTGRES_DB=grpc_demo
+      - POSTGRES_USER=grpc_demo
+      - POSTGRES_PASSWORD=grpc_demo
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - grpc-demo-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

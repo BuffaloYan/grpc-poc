@@ -1,0 +1,43 @@
+server:
+  port: 8080  # HTTP port for Docker
+  # HTTP/2 Configuration
+  http2:
+    enabled: false
+  ssl:
+    enabled: false  # Disable SSL for Docker deployment
+
+
+spring:
+  application:
+    name: grpc-demo-server
+
+grpc:
+  port: 9090
+  security:
+    enabled: false
+  max-inbound-message-size: 200MB
+  max-inbound-metadata-size: 16MB
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.demo.grpc: DEBUG
+    io.grpc: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# Custom application properties
+app:
+  performance:
+    default-response-size: 10485760  # 10MB default response
+    max-response-size: 104857600     # 100MB max response
+    enable-metrics: true 

@@ -1,0 +1,40 @@
+server:
+  port: 0  # Use random port for tests
+  ssl:
+    enabled: false
+  http2:
+    enabled: true
+
+spring:
+  application:
+    name: grpc-demo-server-test
+
+grpc:
+  port: 0  # Use random port for tests
+  security:
+    enabled: false
+  max-inbound-message-size: 100MB
+  max-inbound-metadata-size: 8MB
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.demo.grpc: DEBUG
+    io.grpc: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+
+# Test application properties
+app:
+  performance:
+    default-response-size: 1048576  # 1MB default response for tests
+    max-response-size: 10485760     # 10MB max response for tests
+    enable-metrics: true 

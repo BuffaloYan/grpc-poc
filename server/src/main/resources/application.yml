@@ -1,0 +1,65 @@
+server:
+  port: 8080  # HTTPS port
+  # HTTP/2 Configuration
+  http2:
+    enabled: false
+  ssl:
+    enabled: false
+    key-store: classpath:keystore.p12
+    key-store-password: password
+    key-store-type: PKCS12
+    # Additional SSL configuration for HTTP/2
+    protocol: TLS
+    enabled-protocols:
+      - TLSv1.2
+      - TLSv1.3
+  
+  # HTTP/2 Performance Optimizations (Netty)
+  netty:
+    threads:
+      max: 200
+      min-spare: 10
+    connection-timeout: 20000
+    max-connections: 8192
+    accept-count: 100
+    max-keep-alive-requests: 100
+    keep-alive-timeout: 60000
+
+spring:
+  application:
+    name: grpc-demo-server
+  codec:
+    max-in-memory-size: 200MB  # Increased for large payloads
+  server:
+    max-http-header-size: 64KB  # Increased for large payloads 
+
+grpc:
+  port: 9090
+  security:
+    enabled: false
+  max-inbound-message-size: 200MB
+  max-inbound-metadata-size: 16MB
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+      
+logging:
+  level:
+    com.demo.grpc: DEBUG
+    io.grpc: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# Custom application properties
+app:
+  performance:
+    default-response-size: 10485760  # 10MB default response
+    max-response-size: 104857600     # 100MB max response
+    enable-metrics: true
