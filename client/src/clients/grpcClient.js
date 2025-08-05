@@ -86,6 +86,7 @@ class GrpcClient {
             payload: response.getPayload(),
             statusCode: response.getStatusCode(),
             message: response.getMessage(),
+            processingTimeNs: response.getProcessingTimeNs(),
             clientDuration: duration,
             protocol: 'grpc'
           });
@@ -102,6 +103,14 @@ class GrpcClient {
     return new Promise((resolve, reject) => {
       const responses = [];
       const startTime = Date.now();
+      let requestsSent = 0;
+      let responsesReceived = 0;
+      let streamEnded = false;
+      
+      // Calculate timeout based on number of requests and payload size
+      const totalPayloadSize = requests.reduce((sum, req) => sum + (req.payload ? req.payload.length : 0), 0);
+      const timeout = Math.max(300000, totalPayloadSize * 0.01); // At least 5 minutes, or 10ms per byte
+      const deadline = new Date(Date.now() + timeout);
       
       const call = this.client.processDataStream();
       
@@ -113,8 +122,16 @@ class GrpcClient {
           payload: response.getPayload(),
           statusCode: response.getStatusCode(),
           message: response.getMessage(),
+          processingTimeNs: response.getProcessingTimeNs(),
           protocol: 'grpc-stream'
         });
+        responsesReceived++;
+        
+        // Check if we've received all responses and can end the stream
+        if (responsesReceived === requests.length && !streamEnded) {
+          streamEnded = true;
+          call.end();
+        }
       });
 
       call.on('end', () => {
@@ -151,9 +168,15 @@ class GrpcClient {
         }
         
         call.write(grpcRequest);
+        requestsSent++;
       });
 
-      call.end();
+      // Only end the stream if we've sent all requests and received all responses
+      // If we haven't received all responses yet, the 'data' event handler will end it
+      if (requestsSent === requests.length && responsesReceived === requests.length && !streamEnded) {
+        streamEnded = true;
+        call.end();
+      }
     });
   }
 
@@ -169,7 +192,7 @@ class GrpcClient {
     logger.info(`Starting gRPC performance test: ${numRequests} requests, concurrency: ${concurrency}, streaming: ${useStreaming}`);
 
     const startTime = Date.now();
-    const results = [];
+    const processingTimes = []; // Only store processing times for metrics calculation
 
     if (useStreaming) {
       // Use streaming for high throughput
@@ -181,11 +204,24 @@ class GrpcClient {
         batches.push(batchRequests);
       }
 
-      const promises = batches.map(batch => this.processDataStream(batch));
-      const batchResults = await Promise.all(promises);
+      // Limit concurrent streams to prevent overwhelming the server
+      const maxConcurrentStreams = Math.min(10, batches.length);
+      const batchResults = [];
+      
+      for (let i = 0; i < batches.length; i += maxConcurrentStreams) {
+        const batchSlice = batches.slice(i, i + maxConcurrentStreams);
+        const batchPromises = batchSlice.map(batch => this.processDataStream(batch));
+        const sliceResults = await Promise.all(batchPromises);
+        batchResults.push(...sliceResults);
+      }
       
       batchResults.forEach(batchResult => {
-        results.push(...batchResult.responses);
+        // Extract only processing times from responses
+        batchResult.responses.forEach(response => {
+          if (response.processingTimeNs) {
+            processingTimes.push(response.processingTimeNs);
+          }
+        });
       });
     } else {
       // Use concurrent individual requests with controlled concurrency
@@ -200,21 +236,27 @@ class GrpcClient {
       // Process batches sequentially to avoid overwhelming gRPC connection
       for (const batchPromise of promises) {
         const batchResults = await batchPromise;
-        results.push(...batchResults);
+        // Extract only processing times from responses
+        batchResults.forEach(result => {
+          if (result.processingTimeNs) {
+            processingTimes.push(result.processingTimeNs);
+          }
+        });
       }
     }
 
     const endTime = Date.now();
     const totalDuration = endTime - startTime;
+    const successfulRequests = processingTimes.length;
 
     return {
       protocol: useStreaming ? 'grpc-stream' : 'grpc',
       totalRequests: numRequests,
-      successfulRequests: results.length,
+      successfulRequests,
       totalDuration,
-      averageLatency: results.reduce((sum, r) => sum + (r.processingTimeNs / 1000000), 0) / results.length,
-      throughput: (results.length / totalDuration) * 1000,
-      results
+      averageLatency: processingTimes.reduce((sum, timeNs) => sum + (timeNs / 1000000), 0) / successfulRequests,
+      throughput: (successfulRequests / totalDuration) * 1000,
+      results: processingTimes.map(timeNs => ({ processingTimeNs: timeNs })) // Keep minimal results for compatibility
     };
   }
 

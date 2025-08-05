@@ -72,21 +72,9 @@ class OrchestratorService {
             return { protocol: 'grpc', error: error.message, totalRequests: 0, successfulRequests: 0, failedRequests: numRequests };
           })
         );
-
-        promises.push(
-          this.grpcClient.performanceTest({
-            numRequests,
-            concurrency,
-            requestSize,
-            responseSize,
-            useStreaming: true
-          }).then(result => ({ protocol: 'grpc-stream', ...result }))
-          .catch(error => {
-            logger.warn('gRPC streaming performance test failed:', error.message);
-            return { protocol: 'grpc-stream', error: error.message, totalRequests: 0, successfulRequests: 0, failedRequests: numRequests };
-          })
-        );
       }
+
+
 
       // Run HTTP tests if requested
       if (protocols.includes('http')) {

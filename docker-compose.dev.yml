@@ -8,7 +8,7 @@ services:
       - ./server/target:/app/target
     environment:
       - SPRING_PROFILES_ACTIVE=dev
-      - JAVA_OPTS=-Xmx1g -Xms512m -XX:+UseG1GC -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005
+      - JAVA_OPTS=-Xmx8g -Xms2g -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005
     ports:
       - "8080:8080"
       - "9090:9090"
@@ -21,9 +21,16 @@ services:
     environment:
       - NODE_ENV=development
       - LOG_LEVEL=debug
+      - NODE_OPTIONS=--max-old-space-size=4096
     ports:
       - "3000:3000"
       - "9229:9229"  # Node.js debug port
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 1G
 
   ui:
     volumes:
