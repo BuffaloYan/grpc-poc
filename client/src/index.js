@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
-// const promClient = require('prometheus-api-metrics'); // Temporarily disabled
+const promClient = require('prom-client');
 const config = require('./config');
 const logger = require('./utils/logger');
 const OrchestratorService = require('./services/orchestratorService');
@@ -18,8 +18,9 @@ app.use(cors());
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
-// Prometheus metrics middleware - temporarily disabled
-// app.use(promClient());
+// Initialize Prometheus metrics collection
+const collectDefaultMetrics = promClient.collectDefaultMetrics;
+collectDefaultMetrics({ timeout: 5000 });
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -70,7 +71,9 @@ app.post('/api/tests', async (req, res) => {
       requestSize: Math.min(parseInt(testConfig.requestSize) || 1048576, config.performance.maxPayloadSize),
       responseSize: Math.min(parseInt(testConfig.responseSize) || 10485760, config.performance.maxPayloadSize),
       protocols: testConfig.protocols || ['grpc', 'http'],
-      testName: testConfig.testName || `Test ${new Date().toISOString()}`
+      useGrpcStreaming: Boolean(testConfig.useGrpcStreaming),
+      testName: testConfig.testName || `Test ${new Date().toISOString()}`,
+      httpMaxSockets: Number.isFinite(testConfig.httpMaxSockets) ? Math.max(1, Math.min(200, parseInt(testConfig.httpMaxSockets))) : undefined
     };
 
     logger.info('Starting performance test with config:', validatedConfig);
@@ -232,10 +235,15 @@ app.get('/api/config', (req, res) => {
   });
 });
 
-// Metrics endpoint for Prometheus - temporarily disabled
-// app.get('/metrics', (req, res) => {
-//   res.json({ message: 'Metrics endpoint disabled' });
-// });
+// Metrics endpoint for Prometheus
+app.get('/metrics', async (req, res) => {
+  try {
+    res.set('Content-Type', promClient.register.contentType);
+    res.end(await promClient.register.metrics());
+  } catch (error) {
+    res.status(500).end(error);
+  }
+});
 
 // Default route
 app.get('/', (req, res) => {

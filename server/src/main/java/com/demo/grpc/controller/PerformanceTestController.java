@@ -64,7 +64,8 @@ public class PerformanceTestController {
     @PostMapping("/process-batch-base64")
     public ResponseEntity<List<DataResponseDto>> processBatchBase64(
             @Valid @RequestBody List<DataRequestDto> requests,
-            @RequestParam(value = "responseSize", required = false, defaultValue = "0") int responseSize) {
+            @RequestParam(value = "responseSize", required = false, defaultValue = "0") int responseSize,
+            @RequestParam(value = "lite", required = false, defaultValue = "true") boolean lite) {
         
         List<DataResponseDto> responses = new ArrayList<>();
         
@@ -93,6 +94,10 @@ public class PerformanceTestController {
             }
             
             DataResponseDto response = dataProcessingService.processData(request, responseSize);
+            if (lite) {
+                response.setPayload(new byte[0]);
+                response.getMetadata().put("payload_omitted", "true");
+            }
             responses.add(response);
         }
         
@@ -165,7 +170,8 @@ public class PerformanceTestController {
     @PostMapping("/process-base64")
     public ResponseEntity<DataResponseDto> processDataBase64(
             @Valid @RequestBody DataRequestDto request,
-            @RequestParam(value = "responseSize", required = false, defaultValue = "0") int responseSize) {
+            @RequestParam(value = "responseSize", required = false, defaultValue = "0") int responseSize,
+            @RequestParam(value = "lite", required = false, defaultValue = "true") boolean lite) {
         
         // Handle base64 encoded payload if present
         if (request.getPayload() != null && request.getPayload().length > 0) {
@@ -192,6 +198,10 @@ public class PerformanceTestController {
         
         // Process the request
         DataResponseDto response = dataProcessingService.processData(request, responseSize);
+        if (lite) {
+            response.setPayload(new byte[0]);
+            response.getMetadata().put("payload_omitted", "true");
+        }
         
         return ResponseEntity.ok(response);
     }

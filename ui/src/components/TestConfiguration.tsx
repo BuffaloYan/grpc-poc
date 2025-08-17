@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { TestConfig } from '../types';
-import { ApiService } from '../services/apiService';
+import { ApiService, apiService } from '../services/apiService';
 
 interface TestConfigurationProps {
   onRunTest: (config: TestConfig) => void;
@@ -15,7 +15,10 @@ export const TestConfiguration: React.FC<TestConfigurationProps> = ({ onRunTest,
     responseSize: 10485760, // 10MB
     protocols: ['grpc', 'http'],
     testName: '',
+    clientBackend: apiService.getCurrentBackend(),
   });
+  
+  const [currentBackend, setCurrentBackend] = useState<'nodejs' | 'java'>(apiService.getCurrentBackend());
 
   const [requestSizeInput, setRequestSizeInput] = useState('1MB');
   const [responseSizeInput, setResponseSizeInput] = useState('10MB');
@@ -34,6 +37,18 @@ export const TestConfiguration: React.FC<TestConfigurationProps> = ({ onRunTest,
       }));
     }
   }, []);
+
+  // Update backend when it changes
+  useEffect(() => {
+    const newBackend = apiService.getCurrentBackend();
+    if (newBackend !== currentBackend) {
+      setCurrentBackend(newBackend);
+      setConfig(prev => ({
+        ...prev,
+        clientBackend: newBackend,
+      }));
+    }
+  }, [currentBackend]);
 
   const handleInputChange = (field: keyof TestConfig, value: any) => {
     setConfig(prev => ({ ...prev, [field]: value }));
@@ -68,6 +83,10 @@ export const TestConfiguration: React.FC<TestConfigurationProps> = ({ onRunTest,
     }));
   };
 
+  const handleHttpMaxSockets = (value: number) => {
+    setConfig(prev => ({ ...prev, httpMaxSockets: Math.max(1, Math.min(200, value)) }));
+  };
+
   const handlePresetSelect = (preset: typeof presets[0]) => {
     setConfig(prev => ({
       ...prev,
@@ -86,7 +105,14 @@ export const TestConfiguration: React.FC<TestConfigurationProps> = ({ onRunTest,
       alert('Please select at least one protocol to test');
       return;
     }
-    onRunTest(config);
+    
+    // Ensure the current backend is set
+    const testConfig = {
+      ...config,
+      clientBackend: currentBackend,
+    };
+    
+    onRunTest(testConfig);
   };
 
   const isValidSize = (input: string) => {
@@ -196,7 +222,7 @@ export const TestConfiguration: React.FC<TestConfigurationProps> = ({ onRunTest,
                     onChange={(e) => handleProtocolChange('grpc', e.target.checked)}
                     className="checkbox-field"
                   />
-                  <span className="ml-2 text-sm text-gray-700">gRPC (+ Streaming)</span>
+                  <span className="ml-2 text-sm text-gray-700">gRPC</span>
                 </label>
                 <label className="flex items-center">
                   <input
@@ -207,6 +233,61 @@ export const TestConfiguration: React.FC<TestConfigurationProps> = ({ onRunTest,
                   />
                   <span className="ml-2 text-sm text-gray-700">HTTP (+ Batch)</span>
                 </label>
+              </div>
+            </div>
+
+            {/* Client Backend Info */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-center space-x-2 mb-2">
+                <span className="text-blue-600 font-medium">🔧 Client Backend:</span>
+                <span className="font-semibold text-blue-800">
+                  {currentBackend === 'java' ? 'Java High-Performance Client' : 'Node.js Client'}
+                </span>
+              </div>
+              <p className="text-sm text-blue-600">
+                {currentBackend === 'java' 
+                  ? 'Optimized for consistent high throughput and low latency performance'
+                  : 'Full-featured client with orchestration, streaming, and test history'
+                }
+              </p>
+              {currentBackend === 'java' && (
+                <div className="mt-2 text-xs text-blue-500">
+                  Note: Test history is not available for Java client
+                </div>
+              )}
+            </div>
+
+            {/* gRPC Options */}
+            <div>
+              <label className="label">gRPC Options</label>
+              <div className="flex items-center space-x-3">
+                <input
+                  id="useGrpcStreaming"
+                  type="checkbox"
+                  checked={Boolean(config.useGrpcStreaming)}
+                  onChange={(e) => handleInputChange('useGrpcStreaming', e.target.checked)}
+                  className="checkbox-field"
+                />
+                <label htmlFor="useGrpcStreaming" className="text-sm text-gray-700">Use gRPC Streaming</label>
+              </div>
+            </div>
+
+            {/* HTTP Options */}
+            <div>
+              <label className="label">HTTP Options</label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+                <div>
+                  <label className="text-sm text-gray-700">Max Sockets</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={200}
+                    value={config.httpMaxSockets || 50}
+                    onChange={(e) => handleHttpMaxSockets(parseInt(e.target.value))}
+                    className="input-field"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Controls parallel HTTP connections</p>
+                </div>
               </div>
             </div>
 

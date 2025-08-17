@@ -60,12 +60,12 @@ class OrchestratorService {
       // Run gRPC tests if requested
       if (protocols.includes('grpc')) {
         promises.push(
-          this.grpcClient.performanceTest({
+          await this.grpcClient.performanceTest({
             numRequests,
             concurrency,
             requestSize,
             responseSize,
-            useStreaming: false
+            useStreaming: testConfig.useGrpcStreaming === true
           }).then(result => ({ protocol: 'grpc', ...result }))
           .catch(error => {
             logger.warn('gRPC performance test failed:', error.message);
@@ -78,8 +78,12 @@ class OrchestratorService {
 
       // Run HTTP tests if requested
       if (protocols.includes('http')) {
+        // Recreate HTTP client if max sockets override is specified
+        if (Number.isFinite(testConfig.httpMaxSockets)) {
+          this.httpClient = new HttpClient(testConfig.httpMaxSockets);
+        }
         promises.push(
-          this.httpClient.performanceTest({
+          await this.httpClient.performanceTest({
             numRequests,
             concurrency,
             requestSize,
@@ -91,8 +95,6 @@ class OrchestratorService {
             return { protocol: 'http', error: error.message, totalRequests: 0, successfulRequests: 0, failedRequests: numRequests };
           })
         );
-
-
       }
 
 
@@ -105,7 +107,16 @@ class OrchestratorService {
 
       // Process and store results
       results.forEach(result => {
-        testResults.results[result.protocol] = result;
+        // Store only summary to avoid memory spikes from detailed arrays
+        testResults.results[result.protocol] = {
+          protocol: result.protocol,
+          totalRequests: result.totalRequests,
+          successfulRequests: result.successfulRequests,
+          failedRequests: result.failedRequests,
+          averageLatency: result.averageLatency,
+          throughput: result.throughput,
+          totalDuration: result.totalDuration
+        };
       });
 
       testResults.endTime = new Date().toISOString();

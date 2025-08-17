@@ -23,6 +23,7 @@ class GrpcClient {
       const options = {
         'grpc.max_receive_message_length': 209715200, // 200MB
         'grpc.max_send_message_length': 209715200,    // 200MB
+        'grpc.default_compression_algorithm': 2, // gzip
         'grpc.keepalive_time_ms': 60000, // 1 minute
         'grpc.keepalive_timeout_ms': 10000, // 10 seconds
         'grpc.keepalive_permit_without_calls': true,
@@ -66,7 +67,7 @@ class GrpcClient {
       }
       
       // Calculate timeout based on payload size
-      const payloadSize = request.payload ? request.payload.length : 0;
+      const payloadSize = request.metadata?.requestSize ? parseInt(request.metadata.requestSize) : (request.payload ? request.payload.length : 0);
       const timeout = Math.max(120000, payloadSize * 0.01); // At least 2 minutes, or 10ms per byte
       
       const deadline = new Date(Date.now() + timeout);
@@ -80,12 +81,8 @@ class GrpcClient {
           reject(error);
         } else {
           logger.debug(`gRPC processData completed in ${duration}ms`);
+          // Return minimal object to avoid retaining large payloads in memory
           resolve({
-            id: response.getId(),
-            timestamp: response.getTimestamp(),
-            payload: response.getPayload(),
-            statusCode: response.getStatusCode(),
-            message: response.getMessage(),
             processingTimeNs: response.getProcessingTimeNs(),
             clientDuration: duration,
             protocol: 'grpc'
@@ -108,7 +105,7 @@ class GrpcClient {
       let streamEnded = false;
       
       // Calculate timeout based on number of requests and payload size
-      const totalPayloadSize = requests.reduce((sum, req) => sum + (req.payload ? req.payload.length : 0), 0);
+      const totalPayloadSize = requests.reduce((sum, req) => sum + (req.metadata?.requestSize ? parseInt(req.metadata.requestSize) : (req.payload ? req.payload.length : 0)), 0);
       const timeout = Math.max(300000, totalPayloadSize * 0.01); // At least 5 minutes, or 10ms per byte
       const deadline = new Date(Date.now() + timeout);
       
@@ -116,12 +113,8 @@ class GrpcClient {
       
       call.on('data', (response) => {
         logger.debug('Received streaming response:', response.getId());
+        // Push minimal response to reduce memory usage during streaming
         responses.push({
-          id: response.getId(),
-          timestamp: response.getTimestamp(),
-          payload: response.getPayload(),
-          statusCode: response.getStatusCode(),
-          message: response.getMessage(),
           processingTimeNs: response.getProcessingTimeNs(),
           protocol: 'grpc-stream'
         });
@@ -263,11 +256,25 @@ class GrpcClient {
   generateTestRequests(count, requestSize, responseSize) {
     const requests = [];
     
-    // Create a single reusable payload buffer to save memory
-    const payload = Buffer.alloc(requestSize);
-    for (let i = 0; i < requestSize; i++) {
-      payload[i] = i % 256;
+    // Create a single reusable JSON payload buffer to save memory
+    const baseObject = {
+      user: {
+        id: 'u-123',
+        name: 'Jane Doe',
+        email: 'jane.doe@example.com',
+        roles: ['admin', 'editor', 'observer']
+      },
+      meta: { source: 'grpc', version: '1.0.0' },
+      items: Array.from({ length: 16 }, (_, i) => ({ index: i, title: `Item ${i}`, active: i % 2 === 0 }))
+    };
+    let jsonString = JSON.stringify(baseObject);
+    if (jsonString.length < requestSize) {
+      const padLen = requestSize - jsonString.length;
+      jsonString += 'X'.repeat(padLen);
+    } else if (jsonString.length > requestSize) {
+      jsonString = jsonString.slice(0, requestSize);
     }
+    const payload = Buffer.from(jsonString, 'utf8');
 
     for (let i = 0; i < count; i++) {
       requests.push({
@@ -277,7 +284,10 @@ class GrpcClient {
         metadata: {
           requestIndex: i.toString(),
           expectedResponseSize: responseSize.toString(),
-          testType: 'performance'
+          testType: 'performance',
+          contentType: 'application/json',
+          requestSize: requestSize.toString(),
+          omitPayload: 'true'
         }
       });
     }

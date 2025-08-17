@@ -5,6 +5,9 @@ export interface TestConfig {
   responseSize: number;
   protocols: ('grpc' | 'http')[];
   testName: string;
+  useGrpcStreaming?: boolean;
+  httpMaxSockets?: number;
+  clientBackend?: 'nodejs' | 'java';
 }
 
 export interface TestResult {
@@ -78,6 +81,16 @@ export interface ApiResponse<T> {
 export interface TestsResponse {
   tests: Test[];
   total: number;
+}
+
+export interface ClientBackend {
+  id: 'nodejs' | 'java';
+  name: string;
+  description: string;
+  baseUrl: string;
+  status: 'healthy' | 'unhealthy' | 'unknown';
+  features: string[];
+  version?: string;
 }
 
 export interface ConfigResponse {

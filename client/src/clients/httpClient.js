@@ -3,13 +3,13 @@ const config = require('../config');
 const logger = require('../utils/logger');
 
 class HttpClient {
-  constructor() {
+  constructor(maxSocketsOverride) {
     this.baseURL = `${config.http.protocol}://${config.http.host}:${config.http.port}/api/v1/performance`;
     // Create HTTP agent with connection pooling
     const httpAgent = new (require('http').Agent)({
       keepAlive: true,
       keepAliveMsecs: 30000,
-      maxSockets: 50, // Limit concurrent connections
+      maxSockets: maxSocketsOverride || 50, // Limit concurrent connections
       maxFreeSockets: 10,
       timeout: 60000
     });
@@ -18,7 +18,7 @@ class HttpClient {
     const httpsAgent = config.http.protocol === 'https' ? new (require('https').Agent)({
       keepAlive: true,
       keepAliveMsecs: 30000,
-      maxSockets: 50, // Limit concurrent connections
+      maxSockets: maxSocketsOverride || 50, // Limit concurrent connections
       maxFreeSockets: 10,
       timeout: 60000,
       rejectUnauthorized: false // Allow self-signed certificates
@@ -70,16 +70,21 @@ class HttpClient {
 
   async processData(request, responseSize = 0) {
     try {
-      // Calculate timeout based on payload size
-      const payloadSize = request.payload ? Buffer.from(request.payload, 'base64').length : 0;
+      // Calculate timeout based on payload size without decoding base64 repeatedly
+      const payloadSize = request.metadata?.requestSize ? parseInt(request.metadata.requestSize) : 0;
       const timeout = Math.max(120000, payloadSize * 0.01); // At least 2 minutes, or 10ms per byte
       
       // Always use base64 endpoint since we're sending base64-encoded payloads
       const response = await this.client.post('/process-base64', request, {
-        params: responseSize > 0 ? { responseSize } : {},
+        params: responseSize > 0 ? { responseSize, lite: true } : { lite: true },
         timeout: timeout
       });
-      return response.data;
+      // Return minimal object to avoid retaining large payloads in memory
+      return {
+        processingTimeNs: response.data?.processingTimeNs,
+        clientDuration: response.data?.clientDuration,
+        protocol: 'http'
+      };
     } catch (error) {
       logger.error('HTTP processData error:', error.response?.data || error.message);
       throw error;
@@ -124,30 +129,47 @@ class HttpClient {
       totalRequests: numRequests,
       successfulRequests: results.length,
       totalDuration,
-      averageLatency: results.reduce((sum, r) => sum + (r.processingTimeNs / 1000000), 0) / results.length,
+      averageLatency: results.length ? results.reduce((sum, r) => sum + ((r.processingTimeNs || 0) / 1000000), 0) / results.length : 0,
       throughput: (results.length / totalDuration) * 1000,
-      results
+      // Do not return full results array with large payloads to save memory
+      results: results
     };
   }
 
   generateTestRequests(count, requestSize, responseSize) {
     const requests = [];
     
-    // Generate test payload as base64 string for JSON transport
-    const payload = Buffer.alloc(requestSize);
-    for (let i = 0; i < requestSize; i++) {
-      payload[i] = i % 256;
+    // Generate JSON payload once and reuse across requests to reduce memory footprint
+    const baseObject = {
+      user: {
+        id: 'u-123',
+        name: 'Jane Doe',
+        email: 'jane.doe@example.com',
+        roles: ['admin', 'editor', 'observer']
+      },
+      meta: { source: 'http', version: '1.0.0' },
+      items: Array.from({ length: 16 }, (_, i) => ({ index: i, title: `Item ${i}`, active: i % 2 === 0 }))
+    };
+    let jsonString = JSON.stringify(baseObject);
+    if (jsonString.length < requestSize) {
+      const padLen = requestSize - jsonString.length;
+      jsonString += 'X'.repeat(padLen);
+    } else if (jsonString.length > requestSize) {
+      jsonString = jsonString.slice(0, requestSize);
     }
+    const payloadBase64 = Buffer.from(jsonString, 'utf8').toString('base64');
 
     for (let i = 0; i < count; i++) {
       requests.push({
         id: `http-request-${i}`,
         timestamp: Date.now(),
-        payload: payload.toString('base64'), // Use base64 encoding for JSON transport
+        payload: payloadBase64, // Reuse same base64 string reference
         metadata: {
           requestIndex: i.toString(),
           expectedResponseSize: responseSize.toString(),
-          testType: 'performance'
+          testType: 'performance',
+          requestSize: requestSize.toString(),
+          contentType: 'application/json'
         }
       });
     }

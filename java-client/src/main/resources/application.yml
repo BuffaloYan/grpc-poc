@@ -1,0 +1,50 @@
+server:
+  port: 3001  # Different from Node.js client
+
+spring:
+  application:
+    name: grpc-demo-java-client
+
+# gRPC and HTTP target configuration
+target:
+  grpc:
+    host: ${GRPC_SERVER_HOST:localhost}
+    port: ${GRPC_SERVER_PORT:9090}
+  http:
+    host: ${HTTP_SERVER_HOST:localhost}
+    port: ${HTTP_SERVER_PORT:8080}
+    base-url: http://${target.http.host}:${target.http.port}
+
+# Performance testing configuration
+performance:
+  default-payload-size: 1048576  # 1MB
+  max-payload-size: 104857600    # 100MB
+  default-concurrency: 10
+  max-concurrency: 100
+  default-duration-seconds: 30
+  
+# Connection pooling
+connection:
+  pool:
+    max-total: 200
+    max-per-route: 50
+    connection-timeout-ms: 5000
+    socket-timeout-ms: 30000
+    
+# Metrics and monitoring
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+      
+logging:
+  level:
+    com.demo.client: DEBUG
+    io.grpc: INFO
+    org.apache.hc: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"

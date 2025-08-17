@@ -1,76 +1,252 @@
 import axios, { type AxiosInstance } from 'axios';
-import type { TestConfig, Test, HealthCheck, TestsResponse, ConfigResponse } from '../types';
+import type { TestConfig, Test, TestResult, HealthCheck, TestsResponse, ConfigResponse, ClientBackend } from '../types';
 
 class ApiService {
-  private client: AxiosInstance;
+  private clients: Record<string, AxiosInstance> = {};
+  private availableBackends: ClientBackend[] = [
+    {
+      id: 'nodejs',
+      name: 'Node.js Client',
+      description: 'Original Node.js gRPC/HTTP client with orchestrator service',
+      baseUrl: 'http://localhost:3000',
+      status: 'unknown',
+      features: ['Orchestration', 'Streaming', 'Batch Processing', 'Real-time Metrics'],
+    },
+    {
+      id: 'java',
+      name: 'Java High-Performance Client',
+      description: 'High-performance Java client optimized for throughput and consistency',
+      baseUrl: 'http://localhost:3002',
+      status: 'unknown',
+      features: ['High Throughput', 'Low Latency', 'Connection Pooling', 'Native Protobuf'],
+    },
+  ];
+  private currentBackend: 'nodejs' | 'java' = 'nodejs';
 
   constructor() {
-    // Use environment variable or default to localhost:3000
-    const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-    
-    this.client = axios.create({
-      baseURL,
-      timeout: 300000, // 5 minutes timeout for long-running tests
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
+    // Initialize clients for both backends
+    this.availableBackends.forEach(backend => {
+      this.clients[backend.id] = axios.create({
+        baseURL: backend.baseUrl,
+        timeout: 300000, // 5 minutes timeout for long-running tests
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
 
+      // Add interceptors for each client
+      this.addInterceptors(this.clients[backend.id], backend.name);
+    });
+  }
+
+  private addInterceptors(client: AxiosInstance, clientName: string) {
     // Request interceptor for logging
-    this.client.interceptors.request.use(
+    client.interceptors.request.use(
       (config) => {
-        console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`);
+        console.log(`${clientName} API Request: ${config.method?.toUpperCase()} ${config.url}`);
         return config;
       },
       (error) => {
-        console.error('API Request Error:', error);
+        console.error(`${clientName} API Request Error:`, error);
         return Promise.reject(error);
       }
     );
 
     // Response interceptor for error handling
-    this.client.interceptors.response.use(
+    client.interceptors.response.use(
       (response) => {
-        console.log(`API Response: ${response.status} ${response.config.url}`);
+        console.log(`${clientName} API Response: ${response.status} ${response.config.url}`);
         return response;
       },
       (error) => {
-        console.error('API Response Error:', error.response?.data || error.message);
+        console.error(`${clientName} API Response Error:`, error.response?.data || error.message);
         
         // Transform error for better UX
         const message = error.response?.data?.message || error.message || 'An error occurred';
-        throw new Error(message);
+        throw new Error(`${clientName}: ${message}`);
       }
     );
   }
 
+  getAvailableBackends(): ClientBackend[] {
+    return this.availableBackends;
+  }
+
+  getCurrentBackend(): 'nodejs' | 'java' {
+    return this.currentBackend;
+  }
+
+  setCurrentBackend(backend: 'nodejs' | 'java'): void {
+    this.currentBackend = backend;
+  }
+
+  private getClient(): AxiosInstance {
+    return this.clients[this.currentBackend];
+  }
+
   async getHealth(): Promise<HealthCheck> {
-    const response = await this.client.get<HealthCheck>('/api/health');
-    return response.data;
+    const client = this.getClient();
+    if (this.currentBackend === 'java') {
+      const response = await client.get<HealthCheck>('/api/v1/performance/health');
+      return response.data;
+    } else {
+      const response = await client.get<HealthCheck>('/api/health');
+      return response.data;
+    }
+  }
+
+  async checkBackendHealth(backendId: 'nodejs' | 'java'): Promise<{ status: 'healthy' | 'unhealthy'; error?: string }> {
+    try {
+      const client = this.clients[backendId];
+      if (backendId === 'java') {
+        await client.get('/api/v1/performance/health');
+      } else {
+        await client.get('/api/health');
+      }
+      return { status: 'healthy' };
+    } catch (error) {
+      return { 
+        status: 'unhealthy', 
+        error: error instanceof Error ? error.message : 'Connection failed'
+      };
+    }
+  }
+
+  async updateBackendStatuses(): Promise<void> {
+    for (const backend of this.availableBackends) {
+      const healthCheck = await this.checkBackendHealth(backend.id);
+      backend.status = healthCheck.status;
+    }
   }
 
   async runTest(config: TestConfig): Promise<{ testId: string; results: Test }> {
-    const response = await this.client.post<{ testId: string; results: Test }>('/api/tests', config);
-    return response.data;
+    const client = this.getClient();
+    
+    if (this.currentBackend === 'java') {
+      // Use Java client API for running tests
+      const promises: Promise<any>[] = [];
+      
+      if (config.protocols.includes('grpc')) {
+        promises.push(
+          client.post('/api/v1/performance/test-grpc', null, {
+            params: {
+              concurrency: config.concurrency,
+              requests: config.numRequests,
+              payloadSize: config.requestSize,
+              responseSize: config.responseSize,
+            }
+          })
+        );
+      }
+      
+      if (config.protocols.includes('http')) {
+        promises.push(
+          client.post('/api/v1/performance/test-http', null, {
+            params: {
+              concurrency: config.concurrency,
+              requests: config.numRequests,
+              payloadSize: config.requestSize,
+              responseSize: config.responseSize,
+            }
+          })
+        );
+      }
+
+      const results = await Promise.all(promises);
+      
+      // Transform Java client results to match expected format
+      const testId = `java-test-${Date.now()}`;
+      const transformedResults: Record<string, TestResult> = {};
+      
+      results.forEach((result, index) => {
+        const protocol = config.protocols[index];
+        const data = result.data;
+        
+        transformedResults[protocol] = {
+          protocol: data.protocol,
+          totalRequests: data.totalRequests,
+          successfulRequests: data.totalRequests - data.errorCount,
+          totalDuration: data.durationMs,
+          averageLatency: data.avgLatencyMs,
+          throughput: data.throughput,
+          results: [],
+        };
+      });
+
+      const test: Test = {
+        testId,
+        testName: config.testName,
+        startTime: new Date().toISOString(),
+        endTime: new Date().toISOString(),
+        status: 'completed',
+        config,
+        results: transformedResults,
+      };
+
+      return { testId, results: test };
+    } else {
+      // Use Node.js client API
+      const response = await client.post<{ testId: string; results: Test }>('/api/tests', config);
+      return response.data;
+    }
   }
 
   async getTest(testId: string): Promise<Test> {
-    const response = await this.client.get<Test>(`/api/tests/${testId}/results`);
+    // For Java client, we don't have persistent test storage, so return cached results
+    if (testId.startsWith('java-test-')) {
+      throw new Error('Java client test results are not stored persistently');
+    }
+    
+    const client = this.getClient();
+    const response = await client.get<Test>(`/api/tests/${testId}/results`);
     return response.data;
   }
 
   async getTests(): Promise<TestsResponse> {
-    const response = await this.client.get<TestsResponse>('/api/tests');
+    if (this.currentBackend === 'java') {
+      // Java client doesn't have test history
+      return { tests: [], total: 0 };
+    }
+    
+    const client = this.getClient();
+    const response = await client.get<TestsResponse>('/api/tests');
     return response.data;
   }
 
   async getConfig(): Promise<ConfigResponse> {
-    const response = await this.client.get<ConfigResponse>('/api/config');
-    return response.data;
+    const client = this.getClient();
+    if (this.currentBackend === 'java') {
+      const response = await client.get('/api/v1/performance/config');
+      
+      // Transform Java client config to match expected format
+      const javaConfig = response.data;
+      return {
+        performance: {
+          defaultRequestSize: javaConfig.defaultPayloadSize || 1048576,
+          defaultResponseSize: 0,
+          defaultConcurrentRequests: javaConfig.defaultConcurrency || 10,
+          defaultTestDuration: 30,
+          maxPayloadSize: javaConfig.maxPayloadSize || 104857600,
+        },
+        server: {
+          grpc: { host: 'localhost', port: 9090 },
+          http: { host: 'localhost', port: 8080 },
+        },
+        version: '1.0.0-java',
+      };
+    } else {
+      const response = await client.get<ConfigResponse>('/api/config');
+      return response.data;
+    }
   }
 
   async generateSampleData(size: number): Promise<any> {
-    const response = await this.client.post('/api/sample-data', { size });
+    const client = this.getClient();
+    if (this.currentBackend === 'java') {
+      // Java client doesn't have sample data generation
+      throw new Error('Sample data generation is not available for Java client');
+    }
+    const response = await client.post('/api/sample-data', { size });
     return response.data;
   }
 

@@ -5,6 +5,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import io.grpc.ServerBuilder;
+import io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder;
 
 @Configuration
 public class GrpcConfig {
@@ -27,6 +28,13 @@ public class GrpcConfig {
                     .maxConnectionIdle(300, java.util.concurrent.TimeUnit.SECONDS)
                     .maxConnectionAge(600, java.util.concurrent.TimeUnit.SECONDS)
                     .maxConnectionAgeGrace(60, java.util.concurrent.TimeUnit.SECONDS);
+
+                if (serverBuilder instanceof NettyServerBuilder) {
+                    NettyServerBuilder netty = (NettyServerBuilder) serverBuilder;
+                    // Increase HTTP/2 flow control windows and concurrent streams to improve throughput
+                    netty.flowControlWindow(16 * 1024 * 1024); // 16MB connection window
+                    netty.maxConcurrentCallsPerConnection(1024);
+                }
             }
         };
     }

@@ -39,6 +39,8 @@ grpc:
     enabled: false
   max-inbound-message-size: 200MB
   max-inbound-metadata-size: 16MB
+  compression:
+    enabled: true
 
 management:
   endpoints:

@@ -3,6 +3,7 @@ import { TestConfiguration } from './components/TestConfiguration';
 import { TestResults } from './components/TestResults';
 import { TestHistory } from './components/TestHistory';
 import { Header } from './components/Header';
+import ClientSelector from './components/ClientSelector';
 import { apiService } from './services/apiService';
 import type { Test, TestConfig, HealthCheck } from './types';
 import './App.css';
@@ -14,6 +15,10 @@ function App() {
   const [health, setHealth] = useState<HealthCheck | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentClient, setCurrentClient] = useState<'nodejs' | 'java'>('nodejs');
+  
+  // Use currentClient to track backend changes
+  console.log('Current client backend:', currentClient);
 
   // Load initial data
   useEffect(() => {
@@ -60,11 +65,25 @@ function App() {
     setActiveTab('results');
   };
 
+  const handleClientChange = (clientId: 'nodejs' | 'java') => {
+    setCurrentClient(clientId);
+    // Clear current test and reload data for new client
+    setCurrentTest(null);
+    setError(null);
+    loadHealth();
+    loadTests();
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Header health={health} onRefreshHealth={loadHealth} />
       
       <main className="container mx-auto px-6 py-8">
+        {/* Client Selector */}
+        <div className="mb-6">
+          <ClientSelector onClientChange={handleClientChange} />
+        </div>
+
         {/* Navigation Tabs */}
         <div className="mb-8">
           <div className="bg-white bg-opacity-70 rounded-2xl p-1 shadow-lg border border-gray-200">
