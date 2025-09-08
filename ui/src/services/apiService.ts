@@ -21,7 +21,7 @@ class ApiService {
       features: ['High Throughput', 'Low Latency', 'Connection Pooling', 'Native Protobuf'],
     },
   ];
-  private currentBackend: 'nodejs' | 'java' = 'nodejs';
+  private currentBackend: 'nodejs' | 'java' = this.loadCurrentBackend();
 
   constructor() {
     // Initialize clients for both backends
@@ -37,6 +37,23 @@ class ApiService {
       // Add interceptors for each client
       this.addInterceptors(this.clients[backend.id], backend.name);
     });
+  }
+
+  private loadCurrentBackend(): 'nodejs' | 'java' {
+    try {
+      const saved = localStorage.getItem('grpc-demo-current-backend');
+      return (saved === 'java' || saved === 'nodejs') ? saved : 'nodejs';
+    } catch (error) {
+      return 'nodejs';
+    }
+  }
+
+  private saveCurrentBackend(backend: 'nodejs' | 'java'): void {
+    try {
+      localStorage.setItem('grpc-demo-current-backend', backend);
+    } catch (error) {
+      console.warn('Failed to save current backend to localStorage:', error);
+    }
   }
 
   private addInterceptors(client: AxiosInstance, clientName: string) {
@@ -78,6 +95,7 @@ class ApiService {
 
   setCurrentBackend(backend: 'nodejs' | 'java'): void {
     this.currentBackend = backend;
+    this.saveCurrentBackend(backend);
   }
 
   private getClient(): AxiosInstance {
@@ -220,6 +238,14 @@ class ApiService {
       
       // Transform Java client config to match expected format
       const javaConfig = response.data;
+      
+      // Update backend with strategy info if available
+      const backend = this.availableBackends.find(b => b.id === 'java');
+      if (backend && javaConfig.httpClientStrategy) {
+        backend.httpStrategy = javaConfig.httpClientStrategy;
+        backend.availableHttpStrategies = javaConfig.availableHttpStrategies || ['blocking', 'reactive'];
+      }
+      
       return {
         performance: {
           defaultRequestSize: javaConfig.defaultPayloadSize || 1048576,
@@ -238,6 +264,33 @@ class ApiService {
       const response = await client.get<ConfigResponse>('/api/config');
       return response.data;
     }
+  }
+
+  async getJavaHttpStrategy(): Promise<{ currentStrategy: string; availableStrategies: string[] }> {
+    if (this.currentBackend !== 'java') {
+      throw new Error('HTTP strategy is only available for Java client');
+    }
+    
+    const client = this.getClient();
+    const response = await client.get('/api/v1/performance/strategy');
+    return response.data;
+  }
+
+  async setJavaHttpStrategy(strategy: string): Promise<{ message: string; currentStrategy: string }> {
+    if (this.currentBackend !== 'java') {
+      throw new Error('HTTP strategy is only available for Java client');
+    }
+    
+    const client = this.getClient();
+    const response = await client.post('/api/v1/performance/strategy', { strategy });
+    
+    // Update backend info
+    const backend = this.availableBackends.find(b => b.id === 'java');
+    if (backend) {
+      backend.httpStrategy = response.data.currentStrategy;
+    }
+    
+    return response.data;
   }
 
   async generateSampleData(size: number): Promise<any> {

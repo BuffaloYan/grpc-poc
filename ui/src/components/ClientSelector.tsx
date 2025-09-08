@@ -4,12 +4,14 @@ import type { ClientBackend } from '../types';
 
 interface ClientSelectorProps {
   onClientChange: (clientId: 'nodejs' | 'java') => void;
+  onStrategyChange?: (strategy: 'blocking' | 'reactive') => void;
 }
 
-const ClientSelector: React.FC<ClientSelectorProps> = ({ onClientChange }) => {
+const ClientSelector: React.FC<ClientSelectorProps> = ({ onClientChange, onStrategyChange }) => {
   const [backends, setBackends] = useState<ClientBackend[]>([]);
   const [currentBackend, setCurrentBackend] = useState<'nodejs' | 'java'>('nodejs');
   const [loading, setLoading] = useState(true);
+  const [changingStrategy, setChangingStrategy] = useState(false);
 
   useEffect(() => {
     loadBackends();
@@ -20,6 +22,19 @@ const ClientSelector: React.FC<ClientSelectorProps> = ({ onClientChange }) => {
       setLoading(true);
       const availableBackends = apiService.getAvailableBackends();
       await apiService.updateBackendStatuses();
+      
+      // Load Java strategy info if Java client is available
+      const javaBackend = availableBackends.find(b => b.id === 'java');
+      if (javaBackend && javaBackend.status === 'healthy') {
+        try {
+          apiService.setCurrentBackend('java');
+          await apiService.getConfig(); // This will update the backend with strategy info
+          apiService.setCurrentBackend(apiService.getCurrentBackend()); // Restore current backend
+        } catch (error) {
+          console.warn('Failed to load Java strategy info:', error);
+        }
+      }
+      
       setBackends([...availableBackends]);
       setCurrentBackend(apiService.getCurrentBackend());
     } catch (error) {
@@ -33,6 +48,31 @@ const ClientSelector: React.FC<ClientSelectorProps> = ({ onClientChange }) => {
     apiService.setCurrentBackend(backendId);
     setCurrentBackend(backendId);
     onClientChange(backendId);
+  };
+
+  const handleStrategyChange = async (strategy: 'blocking' | 'reactive') => {
+    try {
+      setChangingStrategy(true);
+      await apiService.setJavaHttpStrategy(strategy);
+      
+      // Update the backend info
+      const updatedBackends = [...backends];
+      const javaBackend = updatedBackends.find(b => b.id === 'java');
+      if (javaBackend) {
+        javaBackend.httpStrategy = strategy;
+      }
+      setBackends(updatedBackends);
+      
+      // Notify parent component
+      if (onStrategyChange) {
+        onStrategyChange(strategy);
+      }
+    } catch (error) {
+      console.error('Failed to change strategy:', error);
+      alert('Failed to change strategy: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setChangingStrategy(false);
+    }
   };
 
   const getStatusIcon = (status: string) => {
@@ -128,6 +168,40 @@ const ClientSelector: React.FC<ClientSelectorProps> = ({ onClientChange }) => {
                 </span>
               ))}
             </div>
+
+            {/* Java HTTP Strategy Selection */}
+            {backend.id === 'java' && backend.httpStrategy && backend.availableHttpStrategies && (
+              <div className="mt-3 p-2 bg-gray-50 rounded border">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-gray-700">HTTP Client Strategy:</span>
+                  {changingStrategy && <span className="text-xs text-gray-500">Changing...</span>}
+                </div>
+                <div className="flex space-x-2">
+                  {backend.availableHttpStrategies.map((strategy) => (
+                    <button
+                      key={strategy}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleStrategyChange(strategy as 'blocking' | 'reactive');
+                      }}
+                      disabled={changingStrategy || backend.httpStrategy === strategy}
+                      className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
+                        backend.httpStrategy === strategy
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      } ${changingStrategy ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                    >
+                      {strategy === 'blocking' ? '🔄 Blocking' : '⚡ Reactive'}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-1 text-xs text-gray-500">
+                  {backend.httpStrategy === 'blocking' 
+                    ? 'Apache HttpClient (thread-per-request)' 
+                    : 'Spring WebClient (non-blocking)'}
+                </div>
+              </div>
+            )}
 
             {/* Base URL for debugging */}
             <div className="mt-2 text-xs text-gray-500">

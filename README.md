@@ -1,6 +1,6 @@
 # gRPC Performance Testing Demo
 
-A comprehensive demonstration of gRPC vs HTTP performance comparison with large payloads, built with Java Spring Boot (server), Node.js (client), and React (UI).
+A comprehensive demonstration of gRPC vs HTTP performance comparison with large payloads, featuring dual client implementations (Node.js & Java) with reactive and blocking HTTP strategies, built with Java Spring Boot (server) and modern React UI.
 
 ## 🏗️ Architecture
 
@@ -9,25 +9,62 @@ A comprehensive demonstration of gRPC vs HTTP performance comparison with large 
 │   React UI      │    │   Node.js       │    │   Java Spring   │
 │   (Port 80)     │◄───┤   Client API    │◄───┤   Boot Server   │
 │                 │    │   (Port 3000)   │    │                 │
-│   - Test Config │    │   - gRPC Client │    │   - gRPC Service│
-│   - Results     │    │   - HTTP Client │    │   - HTTP API    │
-│   - Charts      │    │   - Orchestrator│    │   - Large Payload│
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-                                               │   HTTP:8080     │
-                                               │   gRPC:9090     │
-                                               └─────────────────┘
+│   - Client      │    │   - gRPC Client │    │   - gRPC Service│
+│     Selector    │    │   - HTTP Client │    │   - HTTP API    │
+│   - Strategy    │    │   - Orchestrator│    │   - Large Payload│
+│     Switching   │    └─────────────────┘    │   Processing    │
+│   - Test Config │                           │                 │
+│   - Results     │    ┌─────────────────┐    │   HTTP:8080     │
+│   - Charts      │    │   Java Client   │◄───┤   gRPC:9090     │
+└─────────────────┘    │   (Port 3002)   │    └─────────────────┘
+                       │                 │
+                       │   - Blocking    │
+                       │     Strategy    │
+                       │   - Reactive    │
+                       │     Strategy    │
+                       │   - gRPC Client │
+                       │   - Performance │
+                       │     Testing     │
+                       └─────────────────┘
 ```
 
 ## 🚀 Features
 
+### Core Performance Testing
 - **Dual Protocol Support**: Compare gRPC vs HTTP performance side-by-side
-- **Large Payload Testing**: Support for 1MB+ requests and 10MB+ responses
+- **Large Payload Testing**: Support for 1MB+ requests and 100MB+ responses
 - **TLS Security**: Self-signed certificates for secure gRPC communication
 - **Real-time Monitoring**: Performance metrics, throughput, and latency analysis
-- **Docker Ready**: Complete containerization for easy deployment
-- **Interactive UI**: React-based interface for configuring and running tests
 - **Streaming Support**: gRPC streaming and HTTP batch processing
 - **Comprehensive Metrics**: Detailed performance analysis and comparison
+
+### Dual Client Architecture
+- **Node.js Client** (Port 3000): Original client with orchestration capabilities
+- **Java Client** (Port 3002): High-performance client with strategy pattern implementation
+- **Client Switching**: Dynamic switching between client implementations via UI
+- **Performance Comparison**: Side-by-side comparison of client implementations
+
+### HTTP Client Strategies (Java Client)
+- **Blocking Strategy**: Traditional Apache HttpClient 5 with connection pooling
+- **Reactive Strategy**: True reactive WebClient with Project Reactor (no blocking calls)
+- **Runtime Strategy Switching**: Change HTTP client strategy without restart
+- **Strategy-specific Metrics**: Separate performance tracking for each approach
+
+### Modern React UI
+- **Client Selector**: Switch between Node.js and Java clients seamlessly
+- **Strategy Switching**: Control Java client HTTP strategy in real-time
+- **Enhanced Visualization**: Modern gradient design with improved UX
+- **Responsive Design**: Optimized for desktop and mobile viewing
+- **Real-time Health Status**: Live monitoring of all services
+- **Performance Charts**: Interactive visualizations using Recharts
+- **Test History Management**: View and compare previous test results
+- **Dynamic Configuration**: Real-time updates based on selected client/strategy
+
+### Deployment & Monitoring
+- **Docker Ready**: Complete containerization for easy deployment
+- **Prometheus Integration**: Detailed metrics collection and monitoring
+- **Health Checks**: Comprehensive service health monitoring
+- **Development Mode**: Hot reloading and debug support
 
 ## 📋 Prerequisites
 
@@ -50,22 +87,74 @@ cd grpc-performance-demo
 
 ### 2. Access the Application
 
-- **Web UI**: http://localhost (Main testing interface)
-- **Client API**: http://localhost:3000 (REST API for orchestration)
+- **Web UI**: http://localhost (Main testing interface with client selector)
+- **Node.js Client API**: http://localhost:3000 (Original orchestration client)
+- **Java Client API**: http://localhost:3002 (High-performance Java client)
 - **Server HTTP**: http://localhost:8080 (Direct HTTP server access)
 - **Server gRPC**: localhost:9090 (Direct gRPC server access)
 
 ### 3. Run Your First Test
 
 1. Open http://localhost in your browser
-2. Configure test parameters:
+2. **Choose Client Implementation**:
+   - **Node.js Client**: Original orchestration client
+   - **Java Client**: High-performance client with strategy options
+3. **Configure HTTP Strategy** (Java Client only):
+   - **Blocking**: Traditional Apache HttpClient approach
+   - **Reactive**: True reactive WebClient approach
+4. Configure test parameters:
    - Number of requests: 100
    - Concurrency: 10
    - Request size: 1MB
    - Response size: 10MB
-3. Select protocols: gRPC and HTTP
-4. Click "Run Performance Test"
-5. View real-time results and comparisons
+5. Select protocols: gRPC and HTTP
+6. Click "Run Performance Test"
+7. View real-time results and client/strategy comparisons
+
+## 🎨 UI Features & User Experience
+
+### Client Selector Component
+The UI features a **dynamic client selector** that allows you to switch between different backend implementations:
+
+- **Node.js Client**: Original orchestration-based client with comprehensive test management
+- **Java Client**: High-performance client with strategy pattern implementation
+- **Real-time Status**: Live health monitoring of each client
+- **Seamless Switching**: Change clients without page refresh
+
+### HTTP Strategy Management (Java Client)
+When using the Java client, you can control the HTTP implementation strategy:
+
+- **Strategy Selector**: Choose between blocking and reactive implementations
+- **Real-time Switching**: Change strategies without service restart
+- **Strategy Indicators**: Visual indicators showing current strategy
+- **Performance Impact**: See how strategy changes affect test results
+
+### Enhanced Test Configuration
+- **Intelligent Presets**: Quick configurations for different testing scenarios
+- **Size Input Parsing**: Smart parsing of size inputs (1KB, 1MB, 1GB)
+- **Protocol Selection**: Easy checkbox selection for gRPC and/or HTTP testing
+- **Parameter Validation**: Real-time validation with helpful error messages
+- **Client-specific Options**: Different options based on selected client
+
+### Modern Visual Design
+- **Gradient Backgrounds**: Beautiful gradient designs with glassmorphism effects
+- **Responsive Layout**: Optimized for desktop, tablet, and mobile viewing
+- **Interactive Elements**: Hover effects and smooth transitions
+- **Status Indicators**: Color-coded health status with animated indicators
+- **Progress Feedback**: Loading states and progress indicators during tests
+
+### Test Results & History
+- **Rich Visualizations**: Interactive charts using Recharts library
+- **Performance Comparison**: Side-by-side comparison of protocols and strategies
+- **Test History**: Browse and compare previous test results
+- **Export Capabilities**: Download test results for further analysis
+- **Real-time Updates**: Live updates during test execution
+
+### Accessibility & UX
+- **Keyboard Navigation**: Full keyboard accessibility support
+- **Screen Reader Support**: Proper ARIA labels and semantic HTML
+- **Error Handling**: User-friendly error messages and recovery suggestions
+- **Help Text**: Contextual help and tooltips throughout the interface
 
 ## 📚 API Documentation
 
@@ -86,7 +175,9 @@ cd grpc-performance-demo
 | `/api/v1/performance/config` | GET | Get service configuration |
 | `/api/v1/performance/generate-test-data` | POST | Generate sample data |
 
-#### 🔗 Client APIs (Node.js)
+#### 🔗 Client APIs
+
+##### Node.js Client (Port 3000)
 - **Base URL**: `http://localhost:3000`
 
 | Endpoint | Method | Description |
@@ -98,12 +189,26 @@ cd grpc-performance-demo
 | `/api/config` | GET | Get client configuration |
 | `/api/sample-data` | POST | Generate sample data |
 
+##### Java Client (Port 3002)
+- **Base URL**: `http://localhost:3002`
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v1/performance/health` | GET | Health check with connectivity tests |
+| `/api/v1/performance/test-grpc` | POST | gRPC-only performance test |
+| `/api/v1/performance/test-http` | POST | HTTP-only performance test |
+| `/api/v1/performance/test-comparison` | POST | Compare gRPC vs HTTP |
+| `/api/v1/performance/config` | GET | Get configuration and strategy info |
+| `/api/v1/performance/strategy` | GET | Get current HTTP client strategy |
+| `/api/v1/performance/strategy` | POST | Change HTTP client strategy |
+
 #### ⚡ gRPC Services
 - **ProcessData**: Unary RPC for single request processing
 - **ProcessDataStream**: Bidirectional streaming for high-throughput testing
 
 ### Example Usage
 
+#### Node.js Client
 ```bash
 # Start a performance test
 curl -X POST http://localhost:3000/api/tests \
@@ -116,11 +221,34 @@ curl -X POST http://localhost:3000/api/tests \
     "protocols": ["grpc", "http"]
   }'
 
-# Check server health
-curl http://localhost:8080/actuator/health
-
 # Get client configuration
 curl http://localhost:3000/api/config
+```
+
+#### Java Client
+```bash
+# Check health and connectivity
+curl http://localhost:3002/api/v1/performance/health
+
+# Run gRPC performance test
+curl -X POST "http://localhost:3002/api/v1/performance/test-grpc?concurrency=10&requests=100&payloadSize=1048576&responseSize=10485760"
+
+# Run comparison test
+curl -X POST "http://localhost:3002/api/v1/performance/test-comparison?concurrency=10&requests=100&payloadSize=1048576"
+
+# Get current HTTP strategy
+curl http://localhost:3002/api/v1/performance/strategy
+
+# Change HTTP strategy to reactive
+curl -X POST http://localhost:3002/api/v1/performance/strategy \
+  -H "Content-Type: application/json" \
+  -d '{"strategy": "reactive"}'
+```
+
+#### Server Health Check
+```bash
+# Check server health
+curl http://localhost:8080/actuator/health
 ```
 
 ## 🐳 Docker Commands
@@ -130,7 +258,7 @@ curl http://localhost:3000/api/config
 # Start all services
 docker-compose up -d
 
-# Start with monitoring (Prometheus + Grafana)
+# Start with monitoring (Prometheus + Grafana) and Java client
 docker-compose --profile monitoring up -d
 
 # View logs
@@ -177,6 +305,17 @@ npm start
 cd ui
 npm install
 npm run dev
+```
+
+### Java Client (Spring Boot)
+```bash
+cd java-client
+mvn clean compile
+mvn spring-boot:run
+
+# Or build and run JAR
+mvn clean package
+java -jar target/grpc-demo-java-client-1.0.0.jar
 ```
 
 ## 📊 Performance Testing Guide
@@ -263,13 +402,21 @@ Access:
 - `SPRING_PROFILES_ACTIVE`: Active Spring profile
 - `JAVA_OPTS`: JVM options
 
-#### Client
+#### Node.js Client
 - `GRPC_SERVER_HOST`: gRPC server hostname
 - `HTTP_SERVER_HOST`: HTTP server hostname
 - `LOG_LEVEL`: Logging level
 
+#### Java Client
+- `GRPC_SERVER_HOST`: gRPC server hostname (default: localhost)
+- `GRPC_SERVER_PORT`: gRPC server port (default: 9090)
+- `HTTP_SERVER_HOST`: HTTP server hostname (default: localhost)
+- `HTTP_SERVER_PORT`: HTTP server port (default: 8080)
+- `HTTP_CLIENT_STRATEGY`: Initial HTTP strategy (blocking/reactive, default: blocking)
+- `JAVA_OPTS`: JVM options for performance tuning
+
 #### UI
-- `VITE_API_URL`: Backend API URL
+- `VITE_API_URL`: Backend API URL (supports dynamic client switching)
 
 ### Performance Tuning
 

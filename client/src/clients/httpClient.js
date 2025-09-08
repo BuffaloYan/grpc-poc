@@ -51,7 +51,7 @@ class HttpClient {
     this.client.interceptors.response.use(
       (response) => {
         const duration = Date.now() - response.config.metadata.startTime;
-        logger.debug(`HTTP response: ${response.status} in ${duration}ms`);
+        logger.info(`HTTP response: ${response.status} in ${duration}ms`);
         if (response.data && typeof response.data === 'object') {
           response.data.clientDuration = duration;
           response.data.protocol = 'http';
@@ -123,13 +123,22 @@ class HttpClient {
 
     const endTime = Date.now();
     const totalDuration = endTime - startTime;
+    const averageLatency = results.length ? results.reduce((sum, r) => sum + (r.clientDuration || 0), 0) / results.length : 0;
+
+    logger.info(`HTTP performance test summary:`);
+    logger.info(`- Total test time: ${totalDuration}ms`);
+    logger.info(`- Successful requests: ${results.length}`);
+    const clientDurations = results.map(r => r.clientDuration || 0);
+    logger.info(`- Client latencies: [${clientDurations.slice(0, 5).join(', ')}${clientDurations.length > 5 ? '...' : ''}]`);
+    logger.info(`- Average latency: ${averageLatency.toFixed(2)}ms`);
+    logger.info(`- Throughput: ${(results.length / totalDuration * 1000).toFixed(2)} req/sec`);
 
     return {
       protocol: 'http',
       totalRequests: numRequests,
       successfulRequests: results.length,
       totalDuration,
-      averageLatency: results.length ? results.reduce((sum, r) => sum + ((r.processingTimeNs || 0) / 1000000), 0) / results.length : 0,
+      averageLatency,
       throughput: (results.length / totalDuration) * 1000,
       // Do not return full results array with large payloads to save memory
       results: results

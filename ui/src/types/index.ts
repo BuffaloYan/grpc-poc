@@ -8,6 +8,7 @@ export interface TestConfig {
   useGrpcStreaming?: boolean;
   httpMaxSockets?: number;
   clientBackend?: 'nodejs' | 'java';
+  javaHttpStrategy?: 'blocking' | 'reactive';
 }
 
 export interface TestResult {
@@ -91,6 +92,8 @@ export interface ClientBackend {
   status: 'healthy' | 'unhealthy' | 'unknown';
   features: string[];
   version?: string;
+  httpStrategy?: 'blocking' | 'reactive';
+  availableHttpStrategies?: string[];
 }
 
 export interface ConfigResponse {

@@ -80,7 +80,7 @@ class GrpcClient {
           logger.error(`gRPC processData error in ${duration}ms:`, error);
           reject(error);
         } else {
-          logger.debug(`gRPC processData completed in ${duration}ms`);
+          logger.info(`gRPC processData completed in ${duration}ms (server: ${(response.getProcessingTimeNs() / 1000000).toFixed(2)}ms)`);
           // Return minimal object to avoid retaining large payloads in memory
           resolve({
             processingTimeNs: response.getProcessingTimeNs(),
@@ -119,7 +119,7 @@ class GrpcClient {
           protocol: 'grpc-stream'
         });
         responsesReceived++;
-        
+
         // Check if we've received all responses and can end the stream
         if (responsesReceived === requests.length && !streamEnded) {
           streamEnded = true;
@@ -185,7 +185,7 @@ class GrpcClient {
     logger.info(`Starting gRPC performance test: ${numRequests} requests, concurrency: ${concurrency}, streaming: ${useStreaming}`);
 
     const startTime = Date.now();
-    const processingTimes = []; // Only store processing times for metrics calculation
+    const clientLatencies = []; // Store client-side round-trip times for accurate latency measurement
 
     if (useStreaming) {
       // Use streaming for high throughput
@@ -209,12 +209,11 @@ class GrpcClient {
       }
       
       batchResults.forEach(batchResult => {
-        // Extract only processing times from responses
-        batchResult.responses.forEach(response => {
-          if (response.processingTimeNs) {
-            processingTimes.push(response.processingTimeNs);
-          }
-        });
+        // For streaming, use total stream time divided by number of responses for average latency
+        const averageLatencyPerRequest = batchResult.clientDuration / batchResult.responses.length;
+        for (let i = 0; i < batchResult.responses.length; i++) {
+          clientLatencies.push(averageLatencyPerRequest);
+        }
       });
     } else {
       // Use concurrent individual requests with controlled concurrency
@@ -229,10 +228,14 @@ class GrpcClient {
       // Process batches sequentially to avoid overwhelming gRPC connection
       for (const batchPromise of promises) {
         const batchResults = await batchPromise;
-        // Extract only processing times from responses
+        logger.info(`Batch completed with ${batchResults.length} results`);
+        // Extract client-side round-trip times from responses
         batchResults.forEach(result => {
-          if (result.processingTimeNs) {
-            processingTimes.push(result.processingTimeNs);
+          if (result.clientDuration) {
+            clientLatencies.push(result.clientDuration);
+            logger.info(`Individual request latency: ${result.clientDuration}ms`);
+          } else {
+            logger.warn('Missing clientDuration in result:', result);
           }
         });
       }
@@ -240,16 +243,24 @@ class GrpcClient {
 
     const endTime = Date.now();
     const totalDuration = endTime - startTime;
-    const successfulRequests = processingTimes.length;
+    const successfulRequests = clientLatencies.length;
+    const averageLatency = clientLatencies.reduce((sum, latency) => sum + latency, 0) / successfulRequests;
+
+    logger.info(`gRPC performance test summary:`);
+    logger.info(`- Total test time: ${totalDuration}ms`);
+    logger.info(`- Successful requests: ${successfulRequests}`);
+    logger.info(`- Client latencies: [${clientLatencies.slice(0, 5).join(', ')}${clientLatencies.length > 5 ? '...' : ''}]`);
+    logger.info(`- Average latency: ${averageLatency.toFixed(2)}ms`);
+    logger.info(`- Throughput: ${(successfulRequests / totalDuration * 1000).toFixed(2)} req/sec`);
 
     return {
       protocol: useStreaming ? 'grpc-stream' : 'grpc',
       totalRequests: numRequests,
       successfulRequests,
       totalDuration,
-      averageLatency: processingTimes.reduce((sum, timeNs) => sum + (timeNs / 1000000), 0) / successfulRequests,
+      averageLatency,
       throughput: (successfulRequests / totalDuration) * 1000,
-      results: processingTimes.map(timeNs => ({ processingTimeNs: timeNs })) // Keep minimal results for compatibility
+      results: clientLatencies.map(latency => ({ clientDuration: latency })) // Keep minimal results for compatibility
     };
   }
 

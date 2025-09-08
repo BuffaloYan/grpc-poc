@@ -5,9 +5,11 @@ import { ApiService, apiService } from '../services/apiService';
 interface TestConfigurationProps {
   onRunTest: (config: TestConfig) => void;
   loading: boolean;
+  javaHttpStrategy?: 'blocking' | 'reactive';
+  currentClient?: 'nodejs' | 'java';
 }
 
-export const TestConfiguration: React.FC<TestConfigurationProps> = ({ onRunTest, loading }) => {
+export const TestConfiguration: React.FC<TestConfigurationProps> = ({ onRunTest, loading, javaHttpStrategy, currentClient }) => {
   const [config, setConfig] = useState<TestConfig>({
     numRequests: 100,
     concurrency: 10,
@@ -20,6 +22,27 @@ export const TestConfiguration: React.FC<TestConfigurationProps> = ({ onRunTest,
   
   const [currentBackend, setCurrentBackend] = useState<'nodejs' | 'java'>(apiService.getCurrentBackend());
 
+  // Update backend when currentClient prop changes
+  useEffect(() => {
+    if (currentClient && currentClient !== currentBackend) {
+      setCurrentBackend(currentClient);
+      setConfig(prev => ({
+        ...prev,
+        clientBackend: currentClient
+      }));
+    }
+  }, [currentClient, currentBackend]);
+
+  // Update config when javaHttpStrategy changes
+  useEffect(() => {
+    if (javaHttpStrategy && currentBackend === 'java') {
+      setConfig(prev => ({
+        ...prev,
+        javaHttpStrategy
+      }));
+    }
+  }, [javaHttpStrategy, currentBackend]);
+
   const [requestSizeInput, setRequestSizeInput] = useState('1MB');
   const [responseSizeInput, setResponseSizeInput] = useState('10MB');
   const [presets] = useState([
@@ -30,12 +53,10 @@ export const TestConfiguration: React.FC<TestConfigurationProps> = ({ onRunTest,
   ]);
 
   useEffect(() => {
-    if (!config.testName) {
-      setConfig(prev => ({
-        ...prev,
-        testName: `Performance Test ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`
-      }));
-    }
+    setConfig(prev => ({
+      ...prev,
+      testName: `Performance Test ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`
+    }));
   }, []);
 
   // Update backend when it changes
@@ -50,7 +71,7 @@ export const TestConfiguration: React.FC<TestConfigurationProps> = ({ onRunTest,
     }
   }, [currentBackend]);
 
-  const handleInputChange = (field: keyof TestConfig, value: any) => {
+  const handleInputChange = (field: keyof TestConfig, value: string | number | boolean | string[]) => {
     setConfig(prev => ({ ...prev, [field]: value }));
   };
 
@@ -64,7 +85,7 @@ export const TestConfiguration: React.FC<TestConfigurationProps> = ({ onRunTest,
       } else {
         setResponseSizeInput(input);
       }
-    } catch (error) {
+    } catch {
       // Invalid input, keep the input field but don't update config
       if (field === 'requestSize') {
         setRequestSizeInput(input);
@@ -125,11 +146,16 @@ export const TestConfiguration: React.FC<TestConfigurationProps> = ({ onRunTest,
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
       {/* Configuration Form */}
       <div className="lg:col-span-2">
-        <div className="card">
-          <h2 className="text-xl font-semibold text-gray-900 mb-6">Test Configuration</h2>
+        <div className="card slide-in-up">
+          <div className="flex items-center space-x-3 mb-8">
+            <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-xl flex items-center justify-center shadow-lg">
+              <span className="text-white text-lg">⚙️</span>
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900">Test Configuration</h2>
+          </div>
           
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Test Name */}
@@ -244,6 +270,21 @@ export const TestConfiguration: React.FC<TestConfigurationProps> = ({ onRunTest,
                   {currentBackend === 'java' ? 'Java High-Performance Client' : 'Node.js Client'}
                 </span>
               </div>
+              
+              {/* Java HTTP Strategy Display */}
+              {currentBackend === 'java' && javaHttpStrategy && (
+                <div className="flex items-center space-x-2 mb-2">
+                  <span className="text-blue-600 font-medium">⚡ HTTP Strategy:</span>
+                  <span className={`px-2 py-1 rounded text-xs font-medium ${
+                    javaHttpStrategy === 'reactive' 
+                      ? 'bg-green-100 text-green-700 border border-green-200' 
+                      : 'bg-orange-100 text-orange-700 border border-orange-200'
+                  }`}>
+                    {javaHttpStrategy === 'reactive' ? '⚡ Reactive (WebClient)' : '🔄 Blocking (HttpClient)'}
+                  </span>
+                </div>
+              )}
+              
               <p className="text-sm text-blue-600">
                 {currentBackend === 'java' 
                   ? 'Optimized for consistent high throughput and low latency performance'
@@ -292,16 +333,19 @@ export const TestConfiguration: React.FC<TestConfigurationProps> = ({ onRunTest,
             </div>
 
             {/* Submit Button */}
-            <div className="flex justify-end">
+            <div className="flex justify-end pt-6">
               <button
                 type="submit"
                 disabled={loading || config.protocols.length === 0 || !isValidSize(requestSizeInput) || !isValidSize(responseSizeInput)}
-                className="btn-primary flex items-center space-x-2"
+                className="btn-primary flex items-center space-x-3 text-lg disabled:transform-none"
               >
                 {loading && (
-                  <span className="animate-spin text-sm">⟳</span>
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                 )}
-                <span>{loading ? 'Running Test...' : 'Run Performance Test'}</span>
+                <span className="flex items-center space-x-2">
+                  {!loading && <span>🚀</span>}
+                  <span>{loading ? 'Running Test...' : 'Run Performance Test'}</span>
+                </span>
               </button>
             </div>
           </form>
@@ -309,23 +353,36 @@ export const TestConfiguration: React.FC<TestConfigurationProps> = ({ onRunTest,
       </div>
 
       {/* Presets Sidebar */}
-      <div>
-        <div className="card">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Presets</h3>
-          <div className="space-y-3">
+      <div className="space-y-8">
+        <div className="card scale-in" style={{animationDelay: '0.1s'}}>
+          <div className="flex items-center space-x-3 mb-6">
+            <div className="w-10 h-10 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl flex items-center justify-center shadow-lg">
+              <span className="text-white text-lg">⚡</span>
+            </div>
+            <h3 className="text-xl font-bold text-gray-900">Quick Presets</h3>
+          </div>
+          <div className="space-y-4">
             {presets.map((preset, index) => (
               <button
                 key={index}
                 onClick={() => handlePresetSelect(preset)}
-                className="w-full text-left p-3 border border-gray-200 rounded-lg hover:border-primary-300 hover:bg-primary-50 transition-colors"
+                className="w-full text-left preset-button disabled:transform-none"
                 disabled={loading}
+                style={{animationDelay: `${0.2 + index * 0.1}s`}}
               >
-                <div className="font-medium text-gray-900">{preset.name}</div>
-                <div className="text-sm text-gray-500 mt-1">
-                  {preset.numRequests} requests, {preset.concurrency} concurrent
-                </div>
-                <div className="text-sm text-gray-500">
-                  {preset.requestSize} → {preset.responseSize}
+                <div className="flex items-start space-x-3">
+                  <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-lg flex items-center justify-center shadow-md mt-0.5 flex-shrink-0">
+                    <span className="text-white text-sm font-bold">{index + 1}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-gray-900 text-base">{preset.name}</div>
+                    <div className="text-sm text-gray-600 mt-1 font-medium">
+                      {preset.numRequests} requests • {preset.concurrency} concurrent
+                    </div>
+                    <div className="text-sm text-gray-500 font-medium">
+                      {preset.requestSize} → {preset.responseSize}
+                    </div>
+                  </div>
                 </div>
               </button>
             ))}
@@ -333,26 +390,31 @@ export const TestConfiguration: React.FC<TestConfigurationProps> = ({ onRunTest,
         </div>
 
         {/* Test Info */}
-        <div className="card mt-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Test Information</h3>
-                      <div className="space-y-3 text-sm">
-            <div className="flex justify-between">
-              <span className="text-gray-600">Total Data Transfer:</span>
-              <span className="font-medium">
+        <div className="card slide-in-up" style={{animationDelay: '0.3s'}}>
+          <div className="flex items-center space-x-3 mb-6">
+            <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl flex items-center justify-center shadow-lg">
+              <span className="text-white text-lg">📊</span>
+            </div>
+            <h3 className="text-xl font-bold text-gray-900">Test Information</h3>
+          </div>
+          <div className="space-y-4">
+            <div className="flex justify-between items-center py-3 border-b border-gray-100">
+              <span className="text-gray-600 font-medium">Total Data Transfer:</span>
+              <span className="font-bold text-lg text-blue-600">
                 {ApiService.formatBytes((config.requestSize + config.responseSize) * config.numRequests)}
               </span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Request Payload:</span>
-              <span className="font-medium">{ApiService.formatBytes(config.requestSize)}</span>
+            <div className="flex justify-between items-center py-3 border-b border-gray-100">
+              <span className="text-gray-600 font-medium">Request Payload:</span>
+              <span className="font-bold text-lg text-green-600">{ApiService.formatBytes(config.requestSize)}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Response Payload:</span>
-              <span className="font-medium">{ApiService.formatBytes(config.responseSize)}</span>
+            <div className="flex justify-between items-center py-3 border-b border-gray-100">
+              <span className="text-gray-600 font-medium">Response Payload:</span>
+              <span className="font-bold text-lg text-purple-600">{ApiService.formatBytes(config.responseSize)}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Estimated Duration:</span>
-              <span className="font-medium">
+            <div className="flex justify-between items-center py-3">
+              <span className="text-gray-600 font-medium">Estimated Duration:</span>
+              <span className="font-bold text-lg text-orange-600">
                 {Math.ceil(config.numRequests / config.concurrency)} - {Math.ceil(config.numRequests / config.concurrency * 2)}s
               </span>
             </div>

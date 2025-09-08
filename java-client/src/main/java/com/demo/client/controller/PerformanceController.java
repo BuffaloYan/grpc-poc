@@ -125,15 +125,24 @@ public class PerformanceController {
         logger.info("Starting comparison test: concurrency={}, requests={}, payloadSize={}, responseSize={}", 
                    finalConcurrency, requests, finalPayloadSize, finalResponseSize);
 
-        CompletableFuture<GrpcClientService.PerformanceResult> grpcTest = 
-            CompletableFuture.supplyAsync(() -> grpcClientService.performanceTest(finalConcurrency, requests, finalPayloadSize, finalResponseSize));
-
-        CompletableFuture<GrpcClientService.PerformanceResult> httpTest = 
-            CompletableFuture.supplyAsync(() -> httpClientService.performanceTest(finalConcurrency, requests, finalPayloadSize, finalResponseSize));
-
         try {
-            GrpcClientService.PerformanceResult grpcResult = grpcTest.get();
-            GrpcClientService.PerformanceResult httpResult = httpTest.get();
+            // Run gRPC test first (synchronously)
+            logger.info("Starting gRPC performance test (sequential mode)...");
+            GrpcClientService.PerformanceResult grpcResult = grpcClientService.performanceTest(finalConcurrency, requests, finalPayloadSize, finalResponseSize);
+            logger.info("gRPC performance test completed successfully");
+
+            // Add a small delay to ensure cleanup is complete
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                logger.warn("Interrupted while waiting between tests", e);
+            }
+
+            // Run HTTP test after gRPC (synchronously)
+            logger.info("Starting HTTP performance test (sequential mode)...");
+            GrpcClientService.PerformanceResult httpResult = httpClientService.performanceTest(finalConcurrency, requests, finalPayloadSize, finalResponseSize);
+            logger.info("HTTP performance test completed successfully");
 
             Map<String, Object> comparison = new HashMap<>();
             comparison.put("grpc", grpcResult);
@@ -173,6 +182,52 @@ public class PerformanceController {
         config.put("defaultPayloadSize", defaultPayloadSize);
         config.put("maxPayloadSize", maxPayloadSize);
         config.put("protocols", new String[]{"grpc", "http"});
+        
+        // Add HTTP client strategy info
+        config.put("httpClientStrategy", httpClientService.getCurrentStrategy());
+        config.put("availableHttpStrategies", httpClientService.getAvailableStrategies());
+        
         return ResponseEntity.ok(config);
+    }
+
+    @GetMapping("/strategy")
+    public ResponseEntity<Map<String, Object>> getCurrentStrategy() {
+        Map<String, Object> response = new HashMap<>();
+        response.put("currentStrategy", httpClientService.getCurrentStrategy());
+        response.put("availableStrategies", httpClientService.getAvailableStrategies());
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/strategy")
+    public ResponseEntity<Map<String, Object>> setStrategy(@RequestBody Map<String, String> request) {
+        try {
+            String strategy = request.get("strategy");
+            if (strategy == null || strategy.trim().isEmpty()) {
+                Map<String, Object> error = new HashMap<>();
+                error.put("error", "Strategy is required");
+                error.put("availableStrategies", httpClientService.getAvailableStrategies());
+                return ResponseEntity.badRequest().body(error);
+            }
+
+            httpClientService.setStrategy(strategy.trim());
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("message", "Strategy changed successfully");
+            response.put("currentStrategy", httpClientService.getCurrentStrategy());
+            response.put("availableStrategies", httpClientService.getAvailableStrategies());
+            return ResponseEntity.ok(response);
+            
+        } catch (IllegalArgumentException e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", e.getMessage());
+            error.put("currentStrategy", httpClientService.getCurrentStrategy());
+            error.put("availableStrategies", httpClientService.getAvailableStrategies());
+            return ResponseEntity.badRequest().body(error);
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "Failed to change strategy: " + e.getMessage());
+            error.put("currentStrategy", httpClientService.getCurrentStrategy());
+            return ResponseEntity.status(500).body(error);
+        }
     }
 }

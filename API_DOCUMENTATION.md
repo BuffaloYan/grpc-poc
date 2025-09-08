@@ -472,6 +472,272 @@ GET /metrics
 
 ---
 
+## Java Client APIs (Spring Boot)
+
+### Base URL
+- **HTTP**: `http://localhost:3002`
+
+---
+
+## Java Client REST APIs
+
+### 1. Performance Testing Endpoints
+
+#### gRPC Performance Test
+```http
+POST /api/v1/performance/test-grpc
+```
+
+**Description**: Run a performance test using only gRPC protocol
+
+**Query Parameters**:
+- `concurrency` (optional, default: 10, max: 100): Number of concurrent requests
+- `requests` (optional, default: 100): Total number of requests
+- `payloadSize` (optional, default: 1048576): Request payload size in bytes
+- `responseSize` (optional, default: 0): Expected response size in bytes
+
+**Response**:
+```json
+{
+  "protocol": "grpc",
+  "totalRequests": "number",
+  "successfulRequests": "number",
+  "failedRequests": "number",
+  "averageLatency": "number (ms)",
+  "minLatency": "number (ms)",
+  "maxLatency": "number (ms)",
+  "throughput": "number (req/s)",
+  "totalDuration": "number (ms)",
+  "startTime": "ISO8601 string",
+  "endTime": "ISO8601 string",
+  "errorMessages": ["string"]
+}
+```
+
+#### HTTP Performance Test
+```http
+POST /api/v1/performance/test-http
+```
+
+**Description**: Run a performance test using only HTTP protocol with the current strategy
+
+**Query Parameters**: Same as gRPC test
+
+**Response**: Same format as gRPC test with `"protocol": "http"`
+
+#### Comparison Test
+```http
+POST /api/v1/performance/test-comparison
+```
+
+**Description**: Run both gRPC and HTTP tests sequentially and provide comparison metrics
+
+**Query Parameters**: Same as individual tests
+
+**Response**:
+```json
+{
+  "grpc": {
+    "protocol": "grpc",
+    "totalRequests": "number",
+    "successfulRequests": "number",
+    "failedRequests": "number",
+    "averageLatency": "number (ms)",
+    "throughput": "number (req/s)",
+    "totalDuration": "number (ms)"
+  },
+  "http": {
+    "protocol": "http",
+    "totalRequests": "number",
+    "successfulRequests": "number",
+    "failedRequests": "number",
+    "averageLatency": "number (ms)",
+    "throughput": "number (req/s)",
+    "totalDuration": "number (ms)"
+  },
+  "summary": {
+    "grpc_faster": "boolean",
+    "throughput_ratio": "number",
+    "latency_ratio": "number",
+    "grpc_throughput_advantage": "number (%)"
+  },
+  "testParameters": {
+    "concurrency": "number",
+    "requests": "number",
+    "payloadSize": "number",
+    "responseSize": "number"
+  }
+}
+```
+
+### 2. Configuration Management Endpoints
+
+#### Get Configuration
+```http
+GET /api/v1/performance/config
+```
+
+**Description**: Get client configuration, limits, and HTTP strategy information
+
+**Response**:
+```json
+{
+  "defaultConcurrency": "number",
+  "maxConcurrency": "number",
+  "defaultPayloadSize": "number",
+  "maxPayloadSize": "number",
+  "protocols": ["grpc", "http"],
+  "httpClientStrategy": "blocking|reactive",
+  "availableHttpStrategies": ["blocking", "reactive"]
+}
+```
+
+#### Get Current HTTP Strategy
+```http
+GET /api/v1/performance/strategy
+```
+
+**Description**: Get the current HTTP client strategy and available options
+
+**Response**:
+```json
+{
+  "currentStrategy": "blocking|reactive",
+  "availableStrategies": ["blocking", "reactive"]
+}
+```
+
+#### Change HTTP Strategy
+```http
+POST /api/v1/performance/strategy
+```
+
+**Description**: Change the HTTP client strategy at runtime without restart
+
+**Request Body**:
+```json
+{
+  "strategy": "blocking|reactive"
+}
+```
+
+**Supported strategies**:
+- `"blocking"`: Apache HttpClient 5 with traditional connection pooling
+- `"reactive"`: True reactive WebClient with Project Reactor
+
+**Response**:
+```json
+{
+  "message": "Strategy changed successfully",
+  "currentStrategy": "reactive",
+  "availableStrategies": ["blocking", "reactive"]
+}
+```
+
+**Error Response** (400 Bad Request):
+```json
+{
+  "error": "Unknown strategy: invalid. Available: [blocking, reactive]",
+  "currentStrategy": "blocking",
+  "availableStrategies": ["blocking", "reactive"]
+}
+```
+
+### 3. Health Check Endpoint
+
+#### Health Check with Connectivity Tests
+```http
+GET /api/v1/performance/health
+```
+
+**Description**: Check service health and test connectivity to both gRPC and HTTP servers
+
+**Response**:
+```json
+{
+  "status": "healthy",
+  "timestamp": "number",
+  "service": "grpc-demo-java-client",
+  "version": "1.0.0",
+  "connectivity": {
+    "grpc": "healthy|unhealthy: error message",
+    "http": "healthy|unhealthy: error message"
+  }
+}
+```
+
+### 4. Monitoring Endpoints
+
+#### Prometheus Metrics
+```http
+GET /actuator/prometheus
+```
+
+**Description**: Prometheus-compatible metrics including strategy-specific metrics
+
+**Available Metrics**:
+- `grpc_client_requests_*`: gRPC client performance metrics
+- `http_client_blocking_requests_*`: Blocking HTTP strategy metrics  
+- `http_client_reactive_requests_*`: Reactive HTTP strategy metrics
+- `jvm_*`: JVM performance metrics
+- `spring_*`: Spring Boot application metrics
+
+---
+
+## HTTP Client Strategy Details
+
+### Blocking Strategy (`BlockingHttpClientStrategy`)
+- **Implementation**: Apache HttpClient 5
+- **Threading Model**: Thread-per-request
+- **Connection Pooling**: 200 total connections, 50 per route
+- **Metrics Prefix**: `http_client_blocking_*`
+- **Best For**: CPU-bound workloads, lower concurrency (< 50 requests)
+
+### Reactive Strategy (`ReactiveHttpClientStrategy`)
+- **Implementation**: Spring WebClient with Project Reactor
+- **Threading Model**: Event-loop based, non-blocking I/O
+- **Connection Management**: Netty HTTP client with 20MB buffers
+- **Metrics Prefix**: `http_client_reactive_*`
+- **Best For**: I/O-bound workloads, high concurrency (> 100 requests)
+
+---
+
+## Java Client Usage Examples
+
+### Example 1: Basic Health Check
+```bash
+curl http://localhost:3002/api/v1/performance/health
+```
+
+### Example 2: Run gRPC Test
+```bash
+curl -X POST "http://localhost:3002/api/v1/performance/test-grpc?concurrency=10&requests=100&payloadSize=1048576&responseSize=10485760"
+```
+
+### Example 3: Switch to Reactive Strategy
+```bash
+curl -X POST http://localhost:3002/api/v1/performance/strategy \
+  -H "Content-Type: application/json" \
+  -d '{"strategy": "reactive"}'
+```
+
+### Example 4: Run HTTP Test with Current Strategy
+```bash
+curl -X POST "http://localhost:3002/api/v1/performance/test-http?concurrency=20&requests=200&payloadSize=2097152"
+```
+
+### Example 5: Run Comparison Test
+```bash
+curl -X POST "http://localhost:3002/api/v1/performance/test-comparison?concurrency=10&requests=100&payloadSize=1048576"
+```
+
+### Example 6: Get Current Configuration
+```bash
+curl http://localhost:3002/api/v1/performance/config
+```
+
+---
+
 ## Error Responses
 
 ### Standard Error Format

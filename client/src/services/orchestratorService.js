@@ -55,54 +55,54 @@ class OrchestratorService {
     this.activeTests.set(testId, testResults);
 
     try {
-      const promises = [];
+      const results = [];
 
-      // Run gRPC tests if requested
+      // Run gRPC tests first if requested (sequentially)
       if (protocols.includes('grpc')) {
-        promises.push(
-          await this.grpcClient.performanceTest({
+        logger.info('Starting gRPC performance test...');
+        try {
+          const grpcResult = await this.grpcClient.performanceTest({
             numRequests,
             concurrency,
             requestSize,
             responseSize,
             useStreaming: testConfig.useGrpcStreaming === true
-          }).then(result => ({ protocol: 'grpc', ...result }))
-          .catch(error => {
-            logger.warn('gRPC performance test failed:', error.message);
-            return { protocol: 'grpc', error: error.message, totalRequests: 0, successfulRequests: 0, failedRequests: numRequests };
-          })
-        );
+          });
+          results.push({ protocol: 'grpc', ...grpcResult });
+          logger.info('gRPC performance test completed successfully');
+        } catch (error) {
+          logger.warn('gRPC performance test failed:', error.message);
+          results.push({ protocol: 'grpc', error: error.message, totalRequests: 0, successfulRequests: 0, failedRequests: numRequests });
+        }
       }
 
-
-
-      // Run HTTP tests if requested
+      // Run HTTP tests after gRPC (sequentially)
       if (protocols.includes('http')) {
+        // Add a small delay to ensure gRPC cleanup is complete
+        if (protocols.includes('grpc')) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+
+        logger.info('Starting HTTP performance test...');
         // Recreate HTTP client if max sockets override is specified
         if (Number.isFinite(testConfig.httpMaxSockets)) {
           this.httpClient = new HttpClient(testConfig.httpMaxSockets);
         }
-        promises.push(
-          await this.httpClient.performanceTest({
+
+        try {
+          const httpResult = await this.httpClient.performanceTest({
             numRequests,
             concurrency,
             requestSize,
             responseSize,
             useBatch: false
-          }).then(result => ({ protocol: 'http', ...result }))
-          .catch(error => {
-            logger.warn('HTTP performance test failed:', error.message);
-            return { protocol: 'http', error: error.message, totalRequests: 0, successfulRequests: 0, failedRequests: numRequests };
-          })
-        );
-      }
-
-
-
-      const results = [];
-      for (const promise of promises) {
-        const result = await promise;
-        results.push(result);
+          });
+          results.push({ protocol: 'http', ...httpResult });
+          logger.info('HTTP performance test completed successfully');
+        } catch (error) {
+          logger.warn('HTTP performance test failed:', error.message);
+          results.push({ protocol: 'http', error: error.message, totalRequests: 0, successfulRequests: 0, failedRequests: numRequests });
+        }
       }
 
       // Process and store results

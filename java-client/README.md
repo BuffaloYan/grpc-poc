@@ -1,12 +1,17 @@
 # gRPC Demo Java Client
 
-High-performance Java client for gRPC/HTTP benchmarking and performance testing.
+High-performance Java client for gRPC/HTTP benchmarking and performance testing with switchable HTTP client strategies (blocking vs reactive).
 
 ## Features
 
 - **High-performance gRPC client** with connection pooling and proper resource management
-- **HTTP client** with Apache HttpClient 5 for fair comparison
+- **Dual HTTP client strategies** with runtime switching capability:
+  - **Blocking Strategy**: Apache HttpClient 5 with traditional connection pooling
+  - **Reactive Strategy**: True reactive WebClient with Project Reactor (no blocking calls)
+- **Strategy Pattern Implementation** for clean architecture and easy extension
+- **Runtime Strategy Switching** via REST API without service restart
 - **Built-in performance testing** with configurable concurrency and payload sizes
+- **Strategy-specific metrics** for detailed performance analysis
 - **Prometheus metrics** integration for monitoring
 - **Spring Boot** framework for robust configuration and dependency injection
 - **Optimized JVM settings** for performance testing workloads
@@ -19,11 +24,33 @@ High-performance Java client for gRPC/HTTP benchmarking and performance testing.
 - Automatic retry and connection management
 - Metrics collection for latency and throughput
 
-### HTTP Client (`HttpClientService`)
-- Apache HttpClient 5 with connection pooling
-- Base64 encoding for binary payload compatibility
-- Proper timeout and error handling
-- Comparable metrics collection
+### HTTP Client Strategies (`HttpClientService`)
+
+The HTTP client uses a **Strategy Pattern** to support multiple implementations:
+
+#### Blocking Strategy (`BlockingHttpClientStrategy`)
+- **Apache HttpClient 5** with traditional connection pooling
+- **Synchronous I/O** with thread-per-request model
+- **Connection pooling**: 200 total connections, 50 per route
+- **Base64 encoding** for binary payload compatibility
+- **Proper timeout handling** and error management
+- **Thread-safe metrics** collection
+
+#### Reactive Strategy (`ReactiveHttpClientStrategy`) 
+- **Spring WebClient** with Project Reactor
+- **True reactive I/O** - no blocking calls in the reactive chain
+- **Netty-based HTTP client** with optimized buffer management
+- **Backpressure handling** for high-throughput scenarios
+- **20MB buffer sizes** for large payload support
+- **10-minute response timeout** for large response processing
+- **Reactive metrics** with proper resource cleanup
+
+#### Strategy Switching
+- **Runtime switching** between strategies via REST API
+- **Environment-based initialization** with `HTTP_CLIENT_STRATEGY`
+- **Thread-safe strategy management** with concurrent access
+- **Independent metrics** for each strategy
+- **Zero-downtime switching** without service restart
 
 ### Performance Testing
 - Configurable concurrency levels (1-100 threads)
@@ -40,27 +67,69 @@ GET /api/v1/performance/health
 ```
 Tests connectivity to both gRPC and HTTP servers.
 
-### gRPC Performance Test
+### Performance Testing
+
+#### gRPC Performance Test
 ```
 POST /api/v1/performance/test-grpc?concurrency=10&requests=100&payloadSize=1048576&responseSize=0
 ```
 
-### HTTP Performance Test
+#### HTTP Performance Test
 ```
 POST /api/v1/performance/test-http?concurrency=10&requests=100&payloadSize=1048576&responseSize=0
 ```
+Uses the currently selected HTTP client strategy (blocking or reactive).
 
-### Comparison Test
+#### Comparison Test
 ```
 POST /api/v1/performance/test-comparison?concurrency=10&requests=100&payloadSize=1048576&responseSize=0
 ```
-Runs both gRPC and HTTP tests concurrently and provides comparison metrics.
+Runs both gRPC and HTTP tests sequentially and provides comparison metrics.
 
-### Configuration
+### Configuration Management
+
+#### Get Configuration
 ```
 GET /api/v1/performance/config
 ```
-Returns current client configuration and limits.
+Returns current client configuration, limits, and HTTP strategy information.
+
+#### Get Current HTTP Strategy
+```
+GET /api/v1/performance/strategy
+```
+Returns the current HTTP client strategy and available options.
+
+**Response:**
+```json
+{
+  "currentStrategy": "blocking",
+  "availableStrategies": ["blocking", "reactive"]
+}
+```
+
+#### Change HTTP Strategy
+```
+POST /api/v1/performance/strategy
+Content-Type: application/json
+
+{
+  "strategy": "reactive"
+}
+```
+
+**Supported strategies:**
+- `"blocking"`: Apache HttpClient 5 with traditional connection pooling
+- `"reactive"`: True reactive WebClient with Project Reactor
+
+**Response:**
+```json
+{
+  "message": "Strategy changed successfully",
+  "currentStrategy": "reactive",
+  "availableStrategies": ["blocking", "reactive"]
+}
+```
 
 ## Performance Optimizations
 
@@ -70,8 +139,21 @@ Returns current client configuration and limits.
 - **100ms GC pause target** for consistent performance
 
 ### Connection Management
+
+#### Blocking Strategy
 - **HTTP connection pooling** (200 total, 50 per route)
-- **gRPC channel management** with keep-alive
+- **Thread-per-request model** with proper timeout handling
+- **Connection reuse** for improved performance
+
+#### Reactive Strategy  
+- **Netty connection pooling** with WebClient
+- **Non-blocking I/O** with event-loop threads
+- **Backpressure handling** for high-throughput scenarios
+- **Large buffer management** (20MB send/receive buffers)
+
+#### gRPC (Both Strategies)
+- **Managed channel** with keep-alive configuration
+- **Connection sharing** across requests
 - **Proper resource cleanup** on shutdown
 
 ### Threading
@@ -128,15 +210,44 @@ The Java client exposes Prometheus metrics at `/actuator/prometheus`:
 - **JVM metrics**: Memory, GC, threads
 - **Spring Boot metrics**: Application health and performance
 
-## Expected Performance Improvements
+## Strategy Performance Characteristics
 
-The Java client should provide more consistent and higher throughput compared to the Node.js client due to:
+### Blocking Strategy vs Reactive Strategy
 
-1. **Better connection management**
-2. **More efficient binary handling**
-3. **Lower GC overhead with G1**
-4. **Optimized gRPC channel reuse**
-5. **Proper HTTP connection pooling**
-6. **Native protobuf serialization**
+#### When to Use Blocking Strategy
+- **CPU-bound workloads** with heavy processing
+- **Lower concurrency scenarios** (< 50 concurrent requests)
+- **Traditional Spring applications** with existing blocking code
+- **Simpler debugging** and troubleshooting requirements
+- **Predictable memory usage** patterns
 
-Test with various concurrency levels and payload sizes to find optimal performance characteristics for your workload.
+#### When to Use Reactive Strategy  
+- **I/O-bound workloads** with network latency
+- **High concurrency scenarios** (> 100 concurrent requests)
+- **Large payload processing** with backpressure
+- **Non-blocking application architectures** 
+- **Memory-efficient processing** of streaming data
+
+### Expected Performance Improvements
+
+The Java client provides several advantages over Node.js client:
+
+1. **Better connection management** with both blocking and reactive strategies
+2. **More efficient binary handling** with native protobuf support
+3. **Lower GC overhead** with G1 garbage collector optimization
+4. **Optimized gRPC channel reuse** across requests
+5. **Strategy-specific optimizations**:
+   - **Blocking**: Connection pooling and thread management
+   - **Reactive**: Non-blocking I/O and backpressure handling
+6. **Native protobuf serialization** without JavaScript overhead
+
+### Performance Testing Recommendations
+
+1. **Start with blocking strategy** for baseline measurements
+2. **Switch to reactive strategy** for high-concurrency tests
+3. **Test with various payload sizes** (1KB to 100MB)
+4. **Monitor strategy-specific metrics** in Prometheus
+5. **Compare both strategies** under your specific workload patterns
+6. **Use comparison API** for side-by-side analysis
+
+Test with various concurrency levels and payload sizes to find optimal performance characteristics for your workload and choose the best strategy.
